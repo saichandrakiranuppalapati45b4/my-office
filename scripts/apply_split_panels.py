@@ -83,14 +83,14 @@ if old_dept_init in js:
 # 4. In Xn (submit), add user chat message
 old_xn_start = 'async function Xn(){let p=B.input.value.trim().replace(/[.!]+$/,"");if(!p)return;He.classList.remove("on"),p=p.charAt(0).toUpperCase()+p.slice(1);'
 new_xn_start = 'async function Xn(){let p=B.input.value.trim().replace(/[.!]+$/,"");if(!p)return;He.classList.remove("on"),p=p.charAt(0).toUpperCase()+p.slice(1);window.addChatMsg&&window.addChatMsg("You",p,!0);'
-if old_xn_start in js:
+if 'window.addChatMsg&&window.addChatMsg("You"' not in js and old_xn_start in js:
     js = js.replace(old_xn_start, new_xn_start, 1)
     print("4. Added user message logging to Xn ✓")
 
 # 5. In Xn (submit), add agent/CEO responses
 old_del_msg = 'kt(`Added \\u2014 <b>Head Table</b> dispatched directive to ${tDepts.map(d=>Rt[d]?.name||d).join(" & ")}`);'
 new_del_msg = 'kt(`Added \\u2014 <b>Head Table</b> dispatched directive to ${tDepts.map(d=>Rt[d]?.name||d).join(" & ")}`);window.addChatMsg&&window.addChatMsg("Head Table",`Directive dispatched to ${tDepts.map(d=>Rt[d]?.name||d).join(" & ")}. Tracking in real time.`,!1,"#2563eb");'
-if old_del_msg in js:
+if 'window.addChatMsg&&window.addChatMsg("Head Table"' not in js and old_del_msg in js:
     js = js.replace(old_del_msg, new_del_msg, 1)
     print("5. Added Head Table response logging ✓")
 
@@ -127,6 +127,11 @@ html_v2 = shell.replace('<!--APP-->', f'<script>{js}</script>')
 with open(OUT_V2, 'w', encoding='utf-8') as f:
     f.write(html_v2)
 print(f"Wrote {OUT_V2} ({len(html_v2)} bytes)")
+
+OUT_INDEX = 'dist/index.html'
+with open(OUT_INDEX, 'w', encoding='utf-8') as f:
+    f.write(html_v2)
+print(f"Wrote {OUT_INDEX} ({len(html_v2)} bytes)")
 
 html_dev = shell.replace('<!--APP-->', '<script src="app.js"></script>')
 with open(OUT_DEV, 'w', encoding='utf-8') as f:

@@ -17,9 +17,10 @@ const shell = readFileSync('src/shell.html', 'utf8');
 const html = shell.replace('<!--APP-->', () => `<script>${js}</script>`);
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/command-centre-v2.html', html);
+writeFileSync('dist/index.html', html);
 
 // dev variant with external script for faster iteration
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/app.js', js);
 writeFileSync('dist/dev.html', shell.replace('<!--APP-->', '<script src="app.js"></script>'));
-console.log(`built dist/command-centre-v2.html (${(html.length / 1024).toFixed(0)} KB)`);
+console.log(`built dist/command-centre-v2.html and dist/index.html (${(html.length / 1024).toFixed(0)} KB)`);

@@ -1,8 +1,10 @@
 node_modules/
 dist/*
+!dist/index.html
 !dist/command-centre-v2.html
 !dist/dev.html
 !dist/app.js
+!dist/_headers
 data/
 office.config.local.json
 office.agents.local.json

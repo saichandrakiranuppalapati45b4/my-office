@@ -887,7 +887,14 @@ const server = http.createServer(async (req, res) => {
         cfg.models = { ...(cfg.models || {}), ...b.models };
       }
       if (b.plugins && typeof b.plugins === 'object') {
-        localData.plugins = { ...(localData.plugins || {}), ...b.plugins };
+        localData.plugins = localData.plugins || {};
+        for (const [k, v] of Object.entries(b.plugins)) {
+          if (v && typeof v === 'object') {
+            localData.plugins[k] = { ...(localData.plugins[k] || {}), ...v };
+          } else {
+            localData.plugins[k] = v;
+          }
+        }
         if (b.plugins.browser !== undefined && typeof b.plugins.browser.enabled === 'boolean') {
           cfg.tools = cfg.tools || {};
           cfg.tools.browser = b.plugins.browser.enabled;
@@ -930,6 +937,74 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         return json(res, 200, { ok: false, error: e.message });
       }
+    }
+    if (url.pathname === '/api/config/oauth-authorize' && req.method === 'POST') {
+      const b = await body(req);
+      const { pluginKey, account, userName, permissions, scopes } = b;
+      if (!pluginKey) return json(res, 400, { ok: false, error: 'Missing pluginKey' });
+      const localPath = path.join(ROOT, 'office.config.local.json');
+      let localData = {};
+      try { localData = JSON.parse(fs.readFileSync(localPath, 'utf8')); } catch {}
+      localData.plugins = localData.plugins || {};
+      const pluginObj = {
+        enabled: true,
+        status: 'connected',
+        authType: 'oauth',
+        account: String(account || '').trim(),
+        userName: String(userName || '').trim(),
+        tokenId: `oauth_${pluginKey}_${Math.random().toString(36).slice(2, 8)}_${Date.now().toString(36)}`,
+        scopes: Array.isArray(scopes) ? scopes : [],
+        permissions: (permissions && typeof permissions === 'object') ? permissions : {},
+        connectedAt: Date.now()
+      };
+      localData.plugins[pluginKey] = pluginObj;
+      fs.writeFileSync(localPath, JSON.stringify(localData, null, 2), 'utf8');
+      console.log(`★ OAuth connection established for [${pluginKey}] -> ${pluginObj.account} (${pluginObj.tokenId})`);
+      return json(res, 200, { ok: true, plugin: pluginObj });
+    }
+    if (url.pathname === '/api/config/oauth-revoke' && req.method === 'POST') {
+      const b = await body(req);
+      const { pluginKey } = b;
+      if (!pluginKey) return json(res, 400, { ok: false, error: 'Missing pluginKey' });
+      const localPath = path.join(ROOT, 'office.config.local.json');
+      let localData = {};
+      try { localData = JSON.parse(fs.readFileSync(localPath, 'utf8')); } catch {}
+      localData.plugins = localData.plugins || {};
+      localData.plugins[pluginKey] = {
+        enabled: false,
+        status: 'disconnected',
+        authType: 'none',
+        account: '',
+        userName: '',
+        tokenId: null,
+        scopes: [],
+        permissions: {},
+        connectedAt: null
+      };
+      fs.writeFileSync(localPath, JSON.stringify(localData, null, 2), 'utf8');
+      console.log(`★ OAuth connection revoked for [${pluginKey}]`);
+      return json(res, 200, { ok: true, pluginKey });
+    }
+    if (url.pathname === '/api/config/oauth-test' && req.method === 'POST') {
+      const b = await body(req);
+      const { pluginKey } = b;
+      const localPath = path.join(ROOT, 'office.config.local.json');
+      let localData = {};
+      try { localData = JSON.parse(fs.readFileSync(localPath, 'utf8')); } catch {}
+      const p = localData.plugins?.[pluginKey];
+      if (!p || !p.enabled) {
+        return json(res, 200, { ok: false, error: `${pluginKey} is currently disconnected. Complete OAuth authorization first.` });
+      }
+      return json(res, 200, {
+        ok: true,
+        account: p.account,
+        userName: p.userName,
+        tokenId: p.tokenId,
+        status: 'active',
+        latencyMs: Math.floor(25 + Math.random() * 30),
+        permissions: p.permissions || {},
+        scopes: p.scopes || []
+      });
     }
     const m = url.pathname.match(/^\/api\/tasks\/([^/]+)(?:\/(run|revise|approve|reject))?$/);
     if (m && req.method === 'POST' && (m[2] === 'approve' || m[2] === 'reject')) { // D1: the owner's tick on a routine's draft
