@@ -1100,38 +1100,42 @@ export function initTasks(ctx) {
 
   /* ---------- per-frame ---------- */
   function tick(now) {
-    if (!live) { const w = Date.now(); for (const r of routines) if (!r.paused && r.nextAt && r.nextAt <= w) fireDemo(r, false); // demo: this page is the clock
-      for (const t of tasks) if (t.state === 'scheduled' && t.dueAt <= w) { t.state = 'next'; t.addedAt = w; touch(t, 'added'); spawnEmote(R[t.agent], '⏱'); feedPush(R[t.agent], '⏱', `Scheduled task fired: ${t.title}`); } }
-    for (const id in R) {
-      const r = R[id];
-      if (r.state === 'stuck') continue;
-      const d = agentTasks(id, 'doing')[0];
-      if (d && !d.live && agentTasks(id, 'next').some(t => t.live || t.piece)) { d.progress = 1; complete(d); continue; } // real work (and a team piece) never waits behind theatre
-      if (d) {
-        if (d.live) {
-          if (!d.running) runLive(d);
-          if (d.ready) { d.progress = 1; complete(d); }
-          else d.progress = Math.min(0.92, (now - (d.startedAt || now)) / 45000);
-        } else if (d.teamHold) { // demo lead: the card fills as the pieces come in, finishes when the last one lands
-          const ps = tasks.filter(x => x.parent === d.id);
-          d.progress = ps.length ? Math.min(0.96, ps.reduce((s, p) => s + (p.state === 'done' ? 1 : p.progress || 0), 0) / ps.length) : Math.min(0.5, (now - d.startedAt) / d.dur);
-          if (ps.length && ps.every(p => p.state === 'done')) { d.progress = 1; complete(d); }
+    try {
+      if (!live) { const w = Date.now(); for (const r of routines) if (!r.paused && r.nextAt && r.nextAt <= w) fireDemo(r, false); // demo: this page is the clock
+        for (const t of tasks) if (t.state === 'scheduled' && t.dueAt <= w) { t.state = 'next'; t.addedAt = w; touch(t, 'added'); spawnEmote(R[t.agent], '⏱'); feedPush(R[t.agent], '⏱', `Scheduled task fired: ${t.title}`); } }
+      for (const id in R) {
+        const r = R[id];
+        if (!r || r.state === 'stuck') continue;
+        const d = agentTasks(id, 'doing')[0];
+        if (d && !d.live && agentTasks(id, 'next').some(t => t.live || t.piece)) { d.progress = 1; complete(d); continue; } // real work (and a team piece) never waits behind theatre
+        if (d) {
+          if (d.live) {
+            if (!d.running) runLive(d);
+            if (d.ready) { d.progress = 1; complete(d); }
+            else d.progress = Math.min(0.92, (now - (d.startedAt || now)) / 45000);
+          } else if (d.teamHold) { // demo lead: the card fills as the pieces come in, finishes when the last one lands
+            const ps = tasks.filter(x => x.parent === d.id);
+            d.progress = ps.length ? Math.min(0.96, ps.reduce((s, p) => s + (p.state === 'done' ? 1 : p.progress || 0), 0) / ps.length) : Math.min(0.5, (now - d.startedAt) / d.dur);
+            if (ps.length && ps.every(p => p.state === 'done')) { d.progress = 1; complete(d); }
+          } else if (!live) {
+            d.progress = Math.min(1, (now - d.startedAt) / d.dur);
+            if (d.progress >= 1) complete(d);
+          }
         } else if (!live) {
-          d.progress = Math.min(1, (now - d.startedAt) / d.dur);
-          if (d.progress >= 1) complete(d);
+          const nx = agentTasks(id, 'next').sort((a, b) => a.addedAt - b.addedAt)[0];
+          if (nx) { start(nx, now); r.nextBrainAt = null; }
+          else if (!r.nextBrainAt) r.nextBrainAt = now + 6000 + Math.random() * 16000;
+          else if (now > r.nextBrainAt) { r.nextBrainAt = null; brainSend(id); }
         }
-      } else if (!live) {
-        const nx = agentTasks(id, 'next').sort((a, b) => a.addedAt - b.addedAt)[0];
-        if (nx) { start(nx, now); r.nextBrainAt = null; }
-        else if (!r.nextBrainAt) r.nextBrainAt = now + 6000 + Math.random() * 16000;
-        else if (now > r.nextBrainAt) { r.nextBrainAt = null; brainSend(id); }
       }
-    }
-    if (now - lastBadge > 400) { syncBadges(); lastBadge = now; }
-    if (dirty) { render(false); renderBoard(); dirty = false; }
-    else {
-      if (now - lastBar > 250) { refreshBars(); lastBar = now; }
-      if (now - lastAgo > 15000) { refreshAgo(); lastAgo = now; }
+      if (now - lastBadge > 400) { syncBadges(); lastBadge = now; }
+      if (dirty) { render(false); renderBoard(); dirty = false; }
+      else {
+        if (now - lastBar > 250) { refreshBars(); lastBar = now; }
+        if (now - lastAgo > 15000) { refreshAgo(); lastAgo = now; }
+      }
+    } catch (e) {
+      console.warn('tasks.tick warning:', e);
     }
   }
 

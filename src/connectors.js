@@ -34,7 +34,7 @@ export function fromSummary(m, agents) {
     const key = s.key || s.id;
     logos[key] = MCP_LOGOS[key] || { name: s.name, img: tile(s.name) };
     names[key] = s.name;
-    status[key] = s.denied ? 'denied' : (s.allowed ? s.status : 'denied');
+    status[key] = s.denied ? 'denied' : (s.allowed !== false ? (s.status || 'connected') : 'denied');
     // only a usable server is wired to pods; the rest sit in the strip, grey, unwired — nothing flows
     if (status[key] !== 'connected') { off.push(key); continue; }
     for (const d of s.depts || []) if (byDept[d] && !byDept[d].includes(key)) byDept[d].push(key);
@@ -58,13 +58,13 @@ export async function loadConnectors({ timeout = 25000 } = {}) {
   try {
     const localCfg = JSON.parse(localStorage.getItem('office_plugins') || '{}');
     const servers = [
-      { key: 'gmail', name: 'Gmail', status: 'connected', depts: ['emails', 'sales', 'ops', 'fin', 'delivery', 'ceo'] },
-      { key: 'slack', name: 'Slack', status: 'connected', depts: ['ceo', 'marketing', 'delivery', 'ops'] },
-      { key: 'supabase', name: 'Supabase', status: 'connected', depts: ['ceo', 'ops', 'delivery'] }
+      { key: 'gmail', name: 'Gmail', status: 'connected', allowed: true, depts: ['emails', 'sales', 'ops', 'fin', 'delivery', 'ceo'] },
+      { key: 'slack', name: 'Slack', status: 'connected', allowed: true, depts: ['ceo', 'marketing', 'delivery', 'ops'] },
+      { key: 'supabase', name: 'Supabase', status: 'connected', allowed: true, depts: ['ceo', 'ops', 'delivery'] }
     ];
     for (const [k, p] of Object.entries(localCfg)) {
       if (p.enabled && !servers.find(s => s.key === k)) {
-        servers.push({ key: k, name: p.userName || k, status: 'connected', depts: ['ceo', 'ops'] });
+        servers.push({ key: k, name: p.userName || k, status: 'connected', allowed: true, depts: ['ceo', 'ops'] });
       }
     }
     return fromSummary({ servers, tools: true, web: true }, null);

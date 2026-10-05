@@ -1694,23 +1694,61 @@ window.CC = { hero, flyTo, zoomToDept, zoomOut, zoomToApproval, requestApproval,
 
 let last = performance.now();
 function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  // 1. Camera & Tween
   try {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
     tickTween(now);
     applyCamera();
-    tickDim(dt);
-    tickSim(now, dt);
-    if (hero) hero.tick(now, dt);
-    tickLOD();
-    if (tasks && tasks.tick) tasks.tick(now);
-    if (mcp && mcp.tick) mcp.tick(now, dt, view, camera, focused, focusDim);
-    syncOverviewBtn();
+  } catch (err) {
+    console.warn('Camera tick warning:', err);
+  }
+
+  // 2. WebGL 3D Scene Render — prioritized so 3D meshes always render every frame
+  try {
     if (renderer && renderer.getContext && !renderer.getContext().isContextLost()) {
       renderer.render(scene, camera);
     }
   } catch (err) {
-    console.warn('Render loop frame warning:', err);
+    console.error('WebGL render warning:', err);
   }
+
+  // 3. Scene Simulation & Character Animations
+  try {
+    tickDim(dt);
+    tickSim(now, dt);
+    if (hero) hero.tick(now, dt);
+  } catch (err) {
+    console.warn('Sim tick warning:', err);
+  }
+
+  // 4. HTML Overlays (Billboards & Name Pills)
+  try {
+    tickLOD();
+  } catch (err) {
+    console.warn('LOD tick warning:', err);
+  }
+
+  // 5. Tasks, Connectors, and Overview Button
+  try {
+    if (tasks && tasks.tick) tasks.tick(now);
+  } catch (err) {
+    console.warn('Tasks tick warning:', err);
+  }
+
+  try {
+    if (mcp && mcp.tick) mcp.tick(now, dt, view, camera, focused, focusDim);
+  } catch (err) {
+    console.warn('MCP tick warning:', err);
+  }
+
+  try {
+    syncOverviewBtn();
+  } catch (err) {
+    console.warn('Overview btn warning:', err);
+  }
+
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

@@ -471,13 +471,19 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
       const k = (now - p.t0) / p.dur;
       if (k < 0) continue;
       if (k >= 1) { p.el.remove(); wirePulses.splice(i, 1); continue; }
-      const path = p.model ? mwires[p.model].path
-        : (p.shared && shared[p.shared].wires[p.dept]) ? shared[p.shared].wires[p.dept].path : wires[p.dept].path;
-      if (!path.getAttribute('d')) { p.el.remove(); wirePulses.splice(i, 1); continue; } // wire hidden (other dept in focus)
-      const e = k * k * (3 - 2 * k);
-      const pt = path.getPointAtLength((p.reverse ? 1 - e : e) * path.getTotalLength());
-      p.el.setAttribute('cx', pt.x); p.el.setAttribute('cy', pt.y);
-      p.el.setAttribute('opacity', (k < 0.15 ? k / 0.15 : k > 0.8 ? (1 - k) / 0.2 : 1) * 0.55 * wireA);
+      const path = p.model ? (mwires[p.model] ? mwires[p.model].path : null)
+        : (p.shared && shared[p.shared] && shared[p.shared].wires && shared[p.shared].wires[p.dept]) ? shared[p.shared].wires[p.dept].path : (wires[p.dept] ? wires[p.dept].path : null);
+      if (!path || !path.getAttribute || !path.getAttribute('d')) { p.el.remove(); wirePulses.splice(i, 1); continue; } // wire hidden or unattached
+      try {
+        const totalLen = path.getTotalLength();
+        if (!totalLen) { p.el.remove(); wirePulses.splice(i, 1); continue; }
+        const e = k * k * (3 - 2 * k);
+        const pt = path.getPointAtLength((p.reverse ? 1 - e : e) * totalLen);
+        p.el.setAttribute('cx', pt.x); p.el.setAttribute('cy', pt.y);
+        p.el.setAttribute('opacity', (k < 0.15 ? k / 0.15 : k > 0.8 ? (1 - k) / 0.2 : 1) * 0.55 * wireA);
+      } catch {
+        p.el.remove(); wirePulses.splice(i, 1); continue;
+      }
     }
   }
 
@@ -486,8 +492,8 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     for (const [dept, keys] of Object.entries(BY_DEPT)) {
       if (!keys.includes(key)) continue;
       const item = byDeptKey[dept + ':' + key];
-      const seats = docks[dept].seats;
-      if (!item || !seats.length) continue;
+      const seats = docks[dept] ? docks[dept].seats : null;
+      if (!item || !seats || !seats.length) continue;
       pulse(item, now, 0.3);
       const seat = seats[Math.floor(Math.random() * seats.length)];
       spawnBeam(item, seat, now, { count: 3 });                                        // tool → desk
@@ -660,11 +666,11 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
       const go = !focused;
       volleyAt = 0;
       if (go) Object.keys(BY_DEPT).forEach((dept, i) => setTimeout(() => {
-        const its = byDept[dept], seats = docks[dept].seats;
-        if (!its.length || !seats.length) return;
+        const its = byDept[dept], dk = docks[dept];
+        if (!its || !its.length || !dk || !dk.seats || !dk.seats.length) return;
         const item = its[Math.floor(Math.random() * its.length)];
         pulse(item, performance.now(), 0.3);
-        spawnBeam(item, seats[Math.floor(Math.random() * seats.length)], performance.now(), { scale: 0.9 });
+        spawnBeam(item, dk.seats[Math.floor(Math.random() * dk.seats.length)], performance.now(), { scale: 0.9 });
       }, 350 + i * 420));
     }
 
@@ -672,6 +678,7 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     // by focusDim while that dept is focused
     const anchorOf = (dept, out) => {
       const D = DOCKS[dept], L = LAYOUT[dept];
+      if (!D || !L) return out.set(0, 0, 0);
       const k = (focused === dept && D.fdir) ? focusDim : 0;
       const fd = D.fdir || D.dir, fdist = D.fdist ?? D.dist, fh = D.fh ?? D.h;
       return out.set(
@@ -714,7 +721,8 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
 
     // CONNECTORS group labels + ambient back-and-forth traffic per dock
     for (const [dept, dk] of Object.entries(docks)) {
-      const n = byDept[dept].length;
+      if (!dk || !dk.conn) continue;
+      const n = (byDept[dept] || []).length;
       anchorOf(dept, v3);
       v3.y += 0.6 + base * 0.62; // pill floats above the row centre
       v3.project(camera);
