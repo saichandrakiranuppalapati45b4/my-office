@@ -150,6 +150,12 @@ const deptRT = {};         // runtime per dept
 const screenSets = [];
 
 for (const [key_, L] of Object.entries(LAYOUT)) {
+  if (key_ === 'brain' && (!L.w || L.w === 0)) {
+    const g = new THREE.Group();
+    scene.add(g);
+    deptRT[key_] = { group: g, L };
+    continue;
+  }
   const dept = DEPTS[key_];
   const g = new THREE.Group();
   g.position.set(L.pos[0], 0, L.pos[1]);
@@ -447,6 +453,7 @@ for (const k of [...DEPT_KEYS, 'brain']) {
     b.innerHTML = `<div class="b-name"><span class="dot" style="background:${dept.chip}"></span>THE BRAIN<b>${brain.state.notes.toLocaleString('en-NZ')}</b>NOTES</div>`;
     b.onclick = (e) => { e.stopPropagation(); brain.open(); };
     b.title = 'open the Brain (G)';
+    b.style.display = 'none';
   }
   hud.appendChild(b);
   deptRT[k].badge = b;
@@ -461,14 +468,14 @@ for (const k of [...DEPT_KEYS, 'brain']) {
   // side = hangs off the pod's edge, vertically centred (fin: its back corner is the Brain;
   // ops: its back corner is the marketing pod's front row).
   const ANCHOR = {
-    ceo:       [0, 10.2, -34],
+    ceo:       [0, 10.2, -10],
     marketing: [-36, 8.6, 13.4],
     emails:    [-30, 8.6, -32.6],
-    delivery:  [0, 10.6, -65],   // y 10.6: delivery back row
+    delivery:  [0, 10.6, -58],   // y 10.6: delivery back row
     sales:     [48, 8.6, -32],     // over the pod's right corner — past the DELIVERY pod's desks and the Sales Lead pill
     ops:       [-13.5, 4, 54],     // side LEFT
     fin:       [43.5, 4, 17],      // side RIGHT
-    brain:     [-5.5, 3.2, -5.5],  // just above the pod's back corner
+    brain:     [0, 0, 0],
   };
   deptRT[k].badgeAnchor = new THREE.Vector3(...ANCHOR[k]);
   if (k === 'fin') deptRT[k].sideBadge = true;

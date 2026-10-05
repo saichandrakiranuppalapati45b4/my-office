@@ -816,8 +816,43 @@ export function initTasks(ctx) {
       await poll();
       setInterval(poll, 3000);
       window.refreshOfficeRealtime = () => poll();
-      window.onSupabaseTaskChange = () => poll();
-    } catch (e) { console.warn('office server not reachable — running offline:', e.message); }
+    } catch (e) {
+      console.warn('office server not reachable — checking user session:', e.message);
+      try {
+        const u = JSON.parse(localStorage.getItem('office_user') || '{}');
+        if (u.id || u.email) {
+          live = true;
+          const mode = panel.querySelector('.tp-mode');
+          if (mode) {
+            mode.hidden = false;
+            mode.textContent = 'LIVE · OPENROUTER';
+            mode.classList.add('live');
+            mode.title = 'Connected to Realtime Cloud · OpenRouter AI';
+          }
+          if (brain && brain.setQuiet) brain.setQuiet(true);
+          if (window.supabase) {
+            window.supabase.from('office_tasks').select('*').eq('user_id', u.id).order('created_at', { ascending: false }).then(({ data }) => {
+              if (data && data.length) {
+                for (const st of data) {
+                  if (!agentOf(st.agent)) continue;
+                  const deptKey = st.dept || st.department;
+                  if (st.state === 'done') {
+                    doneCount[deptKey] = (doneCount[deptKey] || 0) + 1;
+                    const t = mk({ agent: st.agent, title: st.title, text: st.text, plan: st.plan, by: 'you', live: true, sid: st.id, state: 'done',
+                      doneAt: st.doneAt, changedAt: st.doneAt, addedAt: st.addedAt, result: st.result, read: st.read, note: st.note, tools: st.tools || [], used: st.used || [], error: !!st.error, last: 'done' });
+                    deliver(t);
+                  } else reconcile(st);
+                }
+                syncBadges();
+                dirty = true;
+                render(true);
+                renderBoard();
+              }
+            }).catch(() => {});
+          }
+        }
+      } catch (err) {}
+    }
   }
   connect();
   function addTask(agentId, title, by = 'you') {

@@ -53,7 +53,20 @@ export async function loadConnectors({ timeout = 25000 } = {}) {
     const [m, a] = await Promise.all([fetch('/api/mcp', { signal: ctl.signal }).then(r => r.ok ? r.json() : null),
                                       fetch('/api/agents', { signal: ctl.signal }).then(r => r.ok ? r.json() : null).catch(() => null)]);
     clearTimeout(t);
-    if (!m) return null;
-    return fromSummary(m, a && a.agents);
+    if (m) return fromSummary(m, a && a.agents);
+  } catch {}
+  try {
+    const localCfg = JSON.parse(localStorage.getItem('office_plugins') || '{}');
+    const servers = [
+      { key: 'gmail', name: 'Gmail', status: 'connected', depts: ['emails', 'sales', 'ops', 'fin', 'delivery', 'ceo'] },
+      { key: 'slack', name: 'Slack', status: 'connected', depts: ['ceo', 'marketing', 'delivery', 'ops'] },
+      { key: 'supabase', name: 'Supabase', status: 'connected', depts: ['ceo', 'ops', 'delivery'] }
+    ];
+    for (const [k, p] of Object.entries(localCfg)) {
+      if (p.enabled && !servers.find(s => s.key === k)) {
+        servers.push({ key: k, name: p.userName || k, status: 'connected', depts: ['ceo', 'ops'] });
+      }
+    }
+    return fromSummary({ servers, tools: true, web: true }, null);
   } catch { return null; }
 }

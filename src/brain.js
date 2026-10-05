@@ -131,7 +131,7 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
     }
     fx.push({ sprite: s, line, born: performance.now() });
   }
-  let quiet = false; // V3.5 (AJ: "the alerts on the Brain are distracting"): a live office shows only REAL reads and writes — no theatre glints, no ambient pulse
+  let quiet = true; // Quiet by default: a real office shows only real reads/writes — no distracting theatre glints or fake bubbles
   function setQuiet(on) { quiet = !!on; }
   function read(agentId) {
     const a = agentOf(agentId); if (!a) return;

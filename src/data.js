@@ -76,16 +76,16 @@ export const AGENTS = [
   { id: 'ona',   name: 'ONBOARDER',           dept: 'delivery',  grid: [1, 3], hair: '#0d0d0d', skin: '#9C6B43' },
 ];
 
-// Plinth placement in world XZ. Brain central; Head Table commanding at north axis; departments well separated.
+// Plinth placement in world XZ. Head Table central; departments well separated.
 export const LAYOUT = {
-  brain:     { pos: [0, 0],     w: 16, d: 16 },
-  ceo:       { pos: [0, -23],   w: 22, d: 20 },   // HEAD TABLE / CEO executive pod
-  delivery:  { pos: [0, -52],   w: 20, d: 26 },   // DELIVERY pod on top axis
+  ceo:       { pos: [0, 0],     w: 22, d: 20 },   // HEAD TABLE / CEO executive pod in the center
+  delivery:  { pos: [0, -48],   w: 20, d: 26 },   // DELIVERY pod on top axis
   emails:    { pos: [-30, -23], w: 20, d: 26 },
   sales:     { pos: [30, -23],  w: 20, d: 30 },
   marketing: { pos: [-30, 23],  w: 20, d: 30 },
   fin:       { pos: [30, 23],   w: 20, d: 26 },
   ops:       { pos: [0, 48],    w: 20, d: 30 },
+  brain:     { pos: [0, 0],     w: 0,  d: 0 },
 };
 
 // Department billboard metrics (v1 rule #5: live metrics float above each dept,
