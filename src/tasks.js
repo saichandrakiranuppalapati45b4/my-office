@@ -584,6 +584,7 @@ export function initTasks(ctx) {
     if (live) {
       P_.input.disabled = true; P_.add.disabled = true;
       say('Setting the routine — Claude is naming the agent…', 'busy');
+      try {
         const u = JSON.parse(localStorage.getItem('office_user') || '{}');
         const r = await fetch(API + '/routines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: k, text, when: rt.when, needsOk: rt.picker ? P_.okc.checked : undefined, model: chosenModel() || undefined, effort: effortSend(), user_id: u.id || undefined }) });
         const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText);
