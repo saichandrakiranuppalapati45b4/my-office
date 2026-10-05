@@ -1477,6 +1477,7 @@ function tickSim(now, dt) {
       const ss = screenSets[Math.floor(Math.random() * screenSets.length)];
       ss.screenSet.draw(sample(WORKLINES[ss.dept], 3).map(l => l.slice(0, 28)));
       ss.screenSet.tex.needsUpdate = true;
+    }
   }
 }
 
