@@ -27,12 +27,14 @@ export const DEPT_KEYS = ['emails', 'sales', 'marketing', 'ops', 'fin', 'deliver
 
 // known brands → logo key in src/mcplogos.js. Anything else gets a generated tile.
 const ALIASES = {
-  gmail: ['gmail', 'googlegmail'], notion: ['notion'], canva: ['canva'], meta: ['metaads', 'meta', 'facebookads', 'facebook'],
+  gmail: ['gmail', 'googlegmail'], notion: ['notion'], canva: ['canva'], meta: ['metaads', 'meta', 'facebookads', 'facebook', 'instagram'],
   slack: ['slack'], fullenrich: ['fullenrich'], apollo: ['apollo', 'apolloio'], xero: ['xero'], stripe: ['stripe'],
   pandadoc: ['pandadoc'], clarity: ['clarity', 'microsoftclarity'], beehiiv: ['beehiiv'], loops: ['loops'],
   hyperframes: ['hyperframes'], imessage: ['imessage', 'messages'], claude: ['claude'], chatgpt: ['chatgpt', 'openai'],
   googlecalendar: ['googlecalendar', 'gcal', 'calendar'], googledrive: ['googledrive', 'gdrive', 'drive'], webflow: ['webflow'], playwright: ['playwright'],
   higgsfield: ['higgsfield', 'higgfield'], territool: ['territool'],
+  twitter: ['twitter', 'x', 'twitterx'], linkedin: ['linkedin'],
+  supabase: ['supabase', 'sb', 'postgres', 'postgresql'],
   chrome: ['claudeinchrome', 'chrome', 'claudechrome', 'browser'],
 };
 // which pods a known brand feeds (mirrors the demo's MCP_BY_DEPT)
@@ -44,6 +46,8 @@ const DEPTS_BY_KEY = {
   playwright: ['marketing', 'ops'], github: ['ops', 'delivery'], linear: ['ops', 'delivery'], jira: ['ops', 'delivery'],
   hubspot: ['sales', 'marketing'], salesforce: ['sales'], zapier: DEPT_KEYS, figma: ['marketing', 'delivery'],
   webflow: ['marketing', 'delivery'], higgsfield: ['marketing'], territool: ['sales'],
+  twitter: ['marketing'], linkedin: ['sales', 'marketing'],
+  supabase: DEPT_KEYS, // database connector: every department can read/write data
   chrome: DEPT_KEYS, // the owner's browser: every desk may need a web app
 };
 
@@ -58,6 +62,7 @@ function logoKey(name) {
 const STATUS = { '✔': 'connected', '✓': 'connected', '!': 'needs-auth', '✗': 'failed', '✘': 'failed', '⏸': 'pending' };
 
 let servers = [];        // the last discovery, enriched by fromInit()
+let configuredServers = []; // servers specified in office.config.json or office.config.local.json
 let discoveredAt = 0;
 let cfgMcp = { allow: [], deny: [], departments: {} };
 let cfgWeb = true;
@@ -67,6 +72,20 @@ export function configure(cfg) {
   cfgMcp = { allow: [], deny: [], departments: {}, ...(cfg.mcp || {}) };
   cfgWeb = cfg.tools?.web !== false;
   cfgBrowser = cfg.tools?.browser !== false;
+  configuredServers = [];
+  if (Array.isArray(cfg.mcp?.servers)) {
+    for (const s of cfg.mcp.servers) {
+      if (typeof s === 'string') configuredServers.push(make(s, '', 'connected'));
+      else if (s && s.name) configuredServers.push(make(s.name, s.target || '', s.status || 'connected'));
+    }
+  }
+  if (cfg.mcpServers && typeof cfg.mcpServers === 'object') {
+    for (const [k, v] of Object.entries(cfg.mcpServers)) {
+      const name = v.name || k;
+      const target = v.command ? `${v.command} ${(v.args || []).join(' ')}` : (v.url || '');
+      configuredServers.push(make(name, target, v.status || 'connected'));
+    }
+  }
 }
 const matches = (s, x) => { const n = norm(x); return n && (norm(s.name) === n || s.id === x || s.key === n || toolId(x) === s.id); };
 const denied = s => cfgMcp.deny.some(x => matches(s, x));
@@ -114,7 +133,19 @@ export function discover({ timeout = 45000 } = {}) {
   return new Promise(resolve => {
     const env = { ...process.env }; delete env.CLAUDECODE;
     let out = '', done = false;
-    const finish = list => { if (done) return; done = true; if (list) { servers = withBrowser(list); discoveredAt = Date.now(); } resolve(servers); };
+    const finish = list => {
+      if (done) return;
+      done = true;
+      const merged = [...(list || [])];
+      for (const cs of configuredServers) {
+        if (!merged.some(s => s.id === cs.id || norm(s.name) === norm(cs.name))) {
+          merged.push(cs);
+        }
+      }
+      servers = withBrowser(merged);
+      discoveredAt = Date.now();
+      resolve(servers);
+    };
     let p;
     try { p = spawn('claude', ['mcp', 'list'], { env, stdio: ['ignore', 'pipe', 'pipe'] }); } catch { return finish([]); }
     const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} finish(parseList(out)); }, timeout);

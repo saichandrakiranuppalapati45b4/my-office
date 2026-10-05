@@ -1,9 +1,16 @@
 node_modules/
 dist/*
 !dist/command-centre-v2.html
+!dist/dev.html
+!dist/app.js
 data/
 office.config.local.json
 office.agents.local.json
 brain/Agents Office/
 .DS_Store
 *.backup-*
+.env
+.env.local
+.env.*
+__pycache__/
+*.pyc

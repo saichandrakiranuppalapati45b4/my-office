@@ -15,6 +15,8 @@ import { applyAgentTools, profileShared } from './profile.js';
 
 // agent → tools they'd plausibly be driving (falls back to any connector in the dept's dock)
 export const AGENT_MCP = {
+  // ceo / head table
+  ceo_lead: ['notion', 'gmail', 'slack'], cos: ['slack', 'notion'], exec_ops: ['supabase', 'notion'],
   // marketing
   mlead: ['meta', 'clarity', 'notion'], ada: ['meta', 'clarity'], newt: ['beehiiv', 'loops'], gfx: ['canva'], iggy: ['canva', 'clarity'], riley: ['meta', 'beehiiv', 'clarity', 'notion'],
   vid: ['hyperframes', 'canva'],
@@ -44,6 +46,7 @@ const FRONT = new THREE.Vector3(1, 0, 1).normalize();
 // focusDim — the marketing focus look (row floating in the empty gap beside the pod, labels
 // under, pill above) is AJ's approved reference; support/sales re-anchor to match it.
 const DOCKS = {
+  ceo:       { dir: SR.clone().negate(), dist: 13.5, h: 8.0 },  // screen-left of Head Table pod
   marketing: { dir: SR.clone().negate(), dist: 12.5, h: 8.0 },  // screen-left of pod — the approved reference look
   emails:    { dir: SR.clone(),          dist: 12.5, h: 8.0,    // overview: screen-right of pod (was support's slot)
                fdir: SR.clone().negate(), fdist: 12.5 },        // focus: mirror marketing (rail LEFT, empty gap left of pod)
@@ -203,7 +206,7 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
   const svg = document.createElementNS(svgNS, 'svg');
   svg.id = 'wires';
   hud.insertBefore(svg, hud.firstChild); // under every HUD overlay, above the 3D canvas
-  const PORT_CORNER = { marketing: [-1, 1], emails: [-1, -1], sales: [1, -1], ops: [1, -1], fin: [1, -1], delivery: [-1, -1] };
+  const PORT_CORNER = { ceo: [-1, -1], marketing: [-1, 1], emails: [-1, -1], sales: [1, -1], ops: [1, -1], fin: [1, -1], delivery: [-1, -1] };
   const wires = {}, wirePulses = [];
   Object.keys(BY_DEPT).forEach((dept, ji) => {
     const L = LAYOUT[dept], [cx, cz] = PORT_CORNER[dept];

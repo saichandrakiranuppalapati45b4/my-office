@@ -44,8 +44,8 @@ export function normModel(s) {
   for (const k of MODEL_KEYS) if (t === k || t.includes(k)) return k;
   return null;
 }
-export const modelName = k => (MODELS[k] || MODELS[DEFAULT_MODEL]).name;
-export const modelId = k => (MODELS[k] || MODELS[DEFAULT_MODEL]).id;
+export const modelName = k => (MODELS[k] ? MODELS[k].name : (k || MODELS[DEFAULT_MODEL].name));
+export const modelId = k => (MODELS[k] ? MODELS[k].id : (k || MODELS[DEFAULT_MODEL].id));
 
 /** The one that wins, and where it was set. Each argument is a model key or empty. */
 export function modelFor({ task, routine, agent, office } = {}) {

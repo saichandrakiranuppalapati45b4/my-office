@@ -31,6 +31,9 @@ const SEGMENTS = ['roofing', 'HVAC', 'dental', 'logistics', 'fitness', 'property
 
 // generic-business task pool per agent (AJ: generic business, not TerriTool-flavoured)
 const POOL = {
+  ceo_lead: ['Triage owner directives for cross-dept execution', 'Synthesize master executive briefing pack', 'Audit operations and marketing deliverables', 'Plan Q4 company expansion roadmap', 'Review cross-departmental SLA compliance'],
+  cos:      ['Dispatch operational directives to Operations and Marketing leads', 'Track cross-pod task completion status', 'Coordinate executive handoffs across pods', 'Resolve inter-department blockers'],
+  exec_ops: ['Translate executive mandate into operational workflow', 'Draft master company documentation', 'Consolidate department deliverables into executive brief', 'Route marketing and operations deliverables'],
   elead: ['Review the overnight inbox, route 40 emails', 'Tone pass on 6 client replies', 'Weekly inbox summary for AJ', 'Update the reply templates', 'Escalate 2 threads to AJ'],
   cmail: ['Reply to the {co} scope question', 'Send the kickoff summary to {co}', 'Answer 9 client emails from overnight', 'Draft the price-increase notice', 'Chase {co} for the brief sign-off'],
   imail: ['Triage 14 internal emails', 'Circulate the weekly numbers', 'Reply to the team about the Q3 plan', 'Summarise the 40-message thread', 'Book the client review in the calendar'],
@@ -70,6 +73,9 @@ const POOL = {
 
 // keywords that route a typed task to the right agent inside the chosen department
 const KEYS = {
+  ceo_lead: ['directive', 'strategy', 'roadmap', 'executive', 'command', 'ceo', 'company', 'overall', 'overhaul', 'orchestrate', 'manage'],
+  cos: ['dispatch', 'liaison', 'assistant', 'handoff', 'deliver', 'blocker', 'coordinate', 'staff', 'walk'],
+  exec_ops: ['operations', 'workflow', 'briefing', 'cross-department', 'report', 'synthesize', 'document', 'master', 'ops'],
   elead: ['summary', 'template', 'escalate', 'inbox'], cmail: ['client', 'customer', 'reply', 'scope', 'kickoff'],
   imail: ['team', 'internal', 'staff', 'calendar', 'thread'], vmail: ['vendor', 'supplier', 'sla', 'renewal', 'quote'],
   kmail: ['contractor', 'freelance', 'designer', 'developer', 'copywriter'],
@@ -141,7 +147,7 @@ export function initTasks(ctx) {
   // V3.5 routines. Live: the server's list (polled). Demo: session-only, fired by this tick.
   const routines = []; let rseq = 1, polling = false, railAgent = null, railExp = false;
   const RT_DEPTS = ['emails', 'fin', 'sales'];
-  const RT_NAMES = PROFILE ? Object.fromEntries(Object.entries(PROFILE.pods).map(([k, v]) => [k, titleCase(v)])) : { emails: 'Emails', fin: 'Accounting', sales: 'Sales', marketing: 'Marketing', ops: 'Operations', delivery: 'Delivery' };
+  const RT_NAMES = PROFILE ? Object.fromEntries(Object.entries(PROFILE.pods).map(([k, v]) => [k, titleCase(v)])) : { ceo: 'Head Table', emails: 'Emails', fin: 'Accounting', sales: 'Sales', marketing: 'Marketing', ops: 'Operations', delivery: 'Delivery' };
   const rtRefuse = k => `Routines come to ${RT_NAMES[k] || k} in a later release. This release: Emails, Accounting and Sales.`;
   const deptRoutines = k => routines.filter(r => r.dept === k);
   const agentRoutines = id => routines.filter(r => r.agent === id);
@@ -232,8 +238,8 @@ export function initTasks(ctx) {
     return t;
   }
 
-  /* ---------- seed a believable morning ---------- */
-  {
+  /* ---------- seed real database tasks (skip mock seed if running on http / live) ---------- */
+  if (!location.protocol.startsWith('http')) {
     const now = performance.now(), wall = Date.now();
     for (const a of AGENTS) {
       const r = R[a.id];
@@ -264,15 +270,19 @@ export function initTasks(ctx) {
 
   /* ---------- badge rows (far-zoom layer): DOING · NEXT · DONE per pod ---------- */
   function rowHTML(k) {
+    const doneTotal = live ? tasks.filter(t => t.dept === k && t.state === 'done').length : doneCount[k];
     return `<div class="b-tasks" data-tkrow="${k}" title="show ${DEPTS[k].short} in the task panel">
       <span>DOING<b data-tk="${k}-doing">${deptTasks(k, 'doing').length}</b></span>
       <span>NEXT<b data-tk="${k}-next">${deptTasks(k, 'next').length}</b></span>
-      <span>DONE<b data-tk="${k}-done">${doneCount[k]}</b></span></div>`;
+      <span>DONE<b data-tk="${k}-done">${doneTotal}</b></span></div>`;
   }
   for (const k of DEPT_KEYS) deptRT[k].apprRow.insertAdjacentHTML('beforebegin', rowHTML(k));
   function syncBadges() {
     for (const k of DEPT_KEYS) {
-      const vals = { doing: deptTasks(k, 'doing').length, next: deptTasks(k, 'next').length, done: doneCount[k] };
+      const doingCount = deptTasks(k, 'doing').length;
+      const nextCount = deptTasks(k, 'next').length;
+      const doneTotal = live ? tasks.filter(t => t.dept === k && t.state === 'done').length : doneCount[k];
+      const vals = { doing: doingCount, next: nextCount, done: doneTotal };
       for (const [s, n] of Object.entries(vals)) {
         document.querySelectorAll(`[data-tk="${k}-${s}"]`).forEach(b => {
           if (b.textContent !== String(n)) {
@@ -282,19 +292,57 @@ export function initTasks(ctx) {
         });
       }
     }
+    if (typeof window !== 'undefined' && window.updateBillboards) window.updateBillboards();
   }
 
-  /* ---------- the TASK STATUS panel (always on, right side) ---------- */
+  /* ---------- the TASK STATUS panel (left) & CHAT panel (right) ---------- */
   const panel = document.getElementById('tpanel');
+  const chatPanel = document.getElementById('chatPanel');
   const P_ = {
-    dd: panel.querySelector('.tp-dd'), ddName: panel.querySelector('.tp-dd .tp-ddn'), ddDot: panel.querySelector('.tp-dd .dot'),
-    menu: panel.querySelector('.tp-menu'), input: panel.querySelector('.tp-in'), add: panel.querySelector('.tp-add'),
-    hint: panel.querySelector('.tp-hint'), chips: panel.querySelector('.tp-chips'), rows: panel.querySelector('.tp-rows'),
+    dd: (chatPanel || panel).querySelector('.tp-dd'), ddName: (chatPanel || panel).querySelector('.tp-dd .tp-ddn'), ddDot: (chatPanel || panel).querySelector('.tp-dd .dot'),
+    menu: (chatPanel || panel).querySelector('.tp-menu'), input: (chatPanel || panel).querySelector('.tp-in'), add: (chatPanel || panel).querySelector('.tp-add'),
+    hint: (chatPanel || panel).querySelector('.tp-hint'), chips: panel.querySelector('.tp-chips'), rows: panel.querySelector('.tp-rows'),
     scope: panel.querySelector('.tp-scope'),
-    rep: panel.querySelector('.tp-rep'), repRow: panel.querySelector('.tp-rep-row'), cad: panel.querySelector('.tp-cad'), at: panel.querySelector('.tp-at'), okc: panel.querySelector('.tp-okc'), next: panel.querySelector('.tp-next'),
-    model: panel.querySelector('.tp-model'), effort: panel.querySelector('.tp-effort'),
-    bigBtn: panel.querySelector('.tp-big-btn'), team: panel.querySelector('.tp-team'),
+    rep: (chatPanel || panel).querySelector('.tp-rep'), repRow: (chatPanel || panel).querySelector('.tp-rep-row'), cad: (chatPanel || panel).querySelector('.tp-cad'), at: (chatPanel || panel).querySelector('.tp-at'), okc: (chatPanel || panel).querySelector('.tp-okc'), next: panel.querySelector('.tp-next'),
+    model: (chatPanel || panel).querySelector('.tp-model'), effort: (chatPanel || panel).querySelector('.tp-effort'),
+    bigBtn: (chatPanel || panel).querySelector('.tp-big-btn'), team: (chatPanel || panel).querySelector('.tp-team'),
   };
+
+  /* live chat stream helper */
+  function addChatMsg(who, text, isUser, dot) {
+    const stream = document.getElementById('cpMessages');
+    if (!stream) return;
+    const msg = document.createElement('div');
+    msg.className = 'cp-msg ' + (isUser ? 'user' : 'agent');
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    msg.innerHTML = `
+      <div class="cp-msg-head">
+        ${dot ? `<span class="cp-avatar" style="border-color:${dot};background:${dot}22;color:${dot}">${(who||'A')[0].toUpperCase()}</span>` : ''}
+        <span class="cp-sender">${esc(who)}</span>
+        <span class="cp-time">${time}</span>
+      </div>
+      <div class="cp-msg-body">${esc(text)}</div>
+    `;
+    stream.appendChild(msg);
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  // Initial welcome message
+  setTimeout(() => {
+    addChatMsg('Chief Executive', 'Welcome to the Executive Office. Directives entered here are routed through Head Table and dispatched to all 6 departments.', false, '#2563eb');
+  }, 100);
+
+  // Quick prompt buttons
+  document.querySelectorAll('#cpQuickPrompts .cp-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.text && P_.input) {
+        P_.input.value = btn.dataset.text;
+        P_.input.focus();
+        updateHint();
+      }
+    });
+  });
+
   // V3.7: the box grows with the text (one line at rest, six at most) and the big editor mirrors it
   const big = document.getElementById('tpBig');
   const B_ = { in: big.querySelector('.tb-in'), dept: big.querySelector('.tb-dept'), dot: big.querySelector('.tb-head .dot'), hint: big.querySelector('.tb-hint'), add: big.querySelector('.tb-add'), close: big.querySelector('.tb-close') };
@@ -344,7 +392,7 @@ export function initTasks(ctx) {
   function resetTeam() { teamOn = false; P_.team.classList.remove('on'); }
   const teamBit = t => t.team?.members?.length ? ` · <span class="tp-team-chip">TEAM ${t.team.members.length + 1}</span>` : t.piece ? ' · <span class="tp-team-chip">PIECE</span>' : '';
   const membersText = t => (t.team?.members || []).map(id => agentOf(id)?.name || id).join(', ');
-  let dept = 'marketing', filter = 'all';
+  let dept = 'ceo', filter = 'all';
   P_.menu.innerHTML = DEPT_KEYS.map(k => `<button data-k="${k}"><span class="dot" style="background:${DEPTS[k].chip}"></span>${DEPTS[k].name}</button>`).join('');
   P_.menu.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { setDept(b.dataset.k); P_.menu.classList.remove('on'); P_.input.focus(); }));
   P_.dd.addEventListener('click', (e) => { e.stopPropagation(); P_.menu.classList.toggle('on'); });
@@ -354,9 +402,16 @@ export function initTasks(ctx) {
     P_.ddName.textContent = DEPTS[k].short;
     P_.ddDot.style.background = DEPTS[k].chip;
     B_.dept.textContent = DEPTS[k].name.toUpperCase(); B_.dot.style.background = DEPTS[k].chip;
-    P_.input.placeholder = `Type a task for ${DEPTS[k].name.toLowerCase()}…`;
+    P_.input.placeholder = `Type a task or command for ${DEPTS[k].name.toLowerCase()}…`;
     updateHint();
+    const cpScope = document.getElementById('cpScope');
+    if (cpScope) {
+      cpScope.textContent = DEPTS[k].name.toUpperCase();
+      cpScope.style.borderColor = DEPTS[k].chip;
+      cpScope.style.color = DEPTS[k].chip;
+    }
   }
+  setDept('ceo');
   // routing: keywords → the right agent in the chosen dept; fallback = the dept lead (or first agent)
   function route(k, title) {
     const low = title.toLowerCase();
@@ -396,8 +451,8 @@ export function initTasks(ctx) {
       pickBit('task');
     P_.hint.className = 'tp-hint on';
   }
-  P_.input.addEventListener('input', () => { panel.querySelector('.tp-cmd').classList.toggle('typing', !!P_.input.value); grow(); updateHint(); });
-  P_.input.addEventListener('blur', () => { if (!P_.input.value) panel.querySelector('.tp-cmd').classList.remove('typing'); });
+  P_.input.addEventListener('input', () => { (chatPanel || panel).querySelector('.tp-cmd').classList.toggle('typing', !!P_.input.value); grow(); updateHint(); });
+  P_.input.addEventListener('blur', () => { if (!P_.input.value) (chatPanel || panel).querySelector('.tp-cmd').classList.remove('typing'); });
   P_.input.addEventListener('keydown', (e) => { // Enter adds, Shift+Enter is a new line, ⌘⇧E opens the big editor
     e.stopPropagation();
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
@@ -417,6 +472,7 @@ export function initTasks(ctx) {
     if (!title) return;
     big.classList.remove('on');
     title = title.charAt(0).toUpperCase() + title.slice(1);
+    addChatMsg('You', title, true);
     const rt = routineIntent(title);
     if (rt) { await submitRoutine(rt, title); return; }
     if (live) {
@@ -425,28 +481,72 @@ export function initTasks(ctx) {
       const team = asTeam(text);
       say(team ? `Routing through Claude — <b>${leadOf(k).name}</b> is reading it for the team…` : `Routing through Claude — ${DEPTS[k].name.toLowerCase()} is reading it…`, 'busy');
       try {
-        const mdl = chosenModel();
-        const r = await fetch(API + '/tasks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: k, text, model: mdl || undefined, effort: effortSend(), team: team || undefined }) });
+        const u = JSON.parse(localStorage.getItem('office_user') || '{}');
+        const r = await fetch(API + '/tasks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: k, text, model: mdl || undefined, effort: effortSend(), team: team || undefined, user_id: u.id || undefined }) });
         if (!r.ok) throw new Error((await r.json()).error || r.statusText);
         const st = await r.json();
         const t = mk({ agent: st.agent, title: st.title, text: st.text, plan: st.plan, why: st.why, by: 'you', live: true, sid: st.id, model: st.model, modelUsed: st.model || officeModel, modelFrom: st.model ? 'task' : 'office', effort: st.effort,
           team: st.team ? { lead: st.team.lead, members: [] } : undefined });
         resetModel(); resetTeam();
         touch(t, 'added'); spawnEmote(R[t.agent], st.team ? '⚑' : '📋');
-        say(st.team ? `Added — <b>${agentOf(t.agent).name}</b> has it and is splitting it across the team` : `Added — <b>${agentOf(t.agent).name}</b> has it${st.why ? ' · ' + esc(st.why) : ''}`);
+        if (st.delegated && st.delegated.length) {
+          t.delegated = st.delegated;
+          const targetDepts = [...new Set(st.delegated.map(d => d.dept))];
+          say(`Added — <b>Head Table</b> dispatched directive to ${targetDepts.map(d => DEPTS[d]?.name || d).join(' & ')}`);
+          addChatMsg('Head Table', `Directive dispatched to ${targetDepts.map(d => DEPTS[d]?.name || d).join(' & ')}. Tracking in real time.`, false, '#2563eb');
+          if (window.dispatchCeoMission) window.dispatchCeoMission(targetDepts, st.title);
+          for (const d of st.delegated) {
+            const childT = mk({ agent: d.agent, dept: d.dept, title: d.title, text: d.text, by: 'ceo', live: true, sid: d.id, parent: t.id });
+            touch(childT, 'added');
+            if (R[d.agent]) spawnEmote(R[d.agent], '📋');
+          }
+        } else {
+          say(st.team ? `Added — <b>${agentOf(t.agent).name}</b> has it and is splitting it across the team` : `Added — <b>${agentOf(t.agent).name}</b> has it${st.why ? ' · ' + esc(st.why) : ''}`);
+          addChatMsg(st.agent ? (agentOf(st.agent)?.name || st.agent) : DEPTS[k].name, `Task assigned: "${st.title || title}". Working on it.`, false, DEPTS[k]?.chip);
+        }
         setTimeout(() => { if (!P_.input.value) P_.hint.classList.remove('on'); }, 7000);
       } catch (e) {
         say(`Claude couldn't take it (${esc(e.message)}). Kept it on the board.`, 'err');
+        addChatMsg('Office Dispatch', `Failed to dispatch: ${e.message}`, false, '#ef4444');
         const { agent: a } = route(k, text); addTask(a.id, text, 'you');
       }
       P_.input.disabled = false; P_.add.disabled = false; P_.input.blur(); // hand the keys back to the office
       return;
+    }
+    if (dept === 'ceo') {
+      const low = title.toLowerCase();
+      const targets = [];
+      if (/market|post|reel|ad|campaign|social|content/i.test(low)) targets.push('marketing');
+      if (/operat|ops|complian|legal|sop|report|board|system/i.test(low)) targets.push('ops');
+      if (/email|inbox|reply|mail/i.test(low)) targets.push('emails');
+      if (/sale|lead|prospect|deal|pipeline/i.test(low)) targets.push('sales');
+      if (/financ|invoic|bill|pay|reconcil/i.test(low)) targets.push('fin');
+      if (/deliver|qa|asset|client report/i.test(low)) targets.push('delivery');
+      if (!targets.length) targets.push('ops', 'marketing');
+      
+      const t = addTask('ceo_lead', title, 'you');
+      if (t) {
+        t.delegated = [];
+        for (const tg of targets) {
+          const leadA = leadOf(tg);
+          const childT = mk({ agent: leadA.id, dept: tg, title: `${title} (${DEPTS[tg].short})`, by: 'ceo', parent: t.id });
+          touch(childT, 'added');
+          t.delegated.push({ dept: tg, agent: leadA.id, title: childT.title });
+        }
+        if (window.dispatchCeoMission) window.dispatchCeoMission(targets, title);
+        say(`Added — <b>CEO</b> dispatched work to ${targets.map(d => DEPTS[d]?.name || d).join(' & ')}.`);
+        addChatMsg('Head Table', `CEO dispatched directive to ${targets.map(d => DEPTS[d]?.name || d).join(' & ')}.`, false, '#2563eb');
+        setTimeout(updateHint, 3200); P_.input.blur();
+        resetModel(); P_.input.value = '';
+        return;
+      }
     }
     if (asTeam(title)) { // demo: the lead + two or three desks, all at once, the lead finishes when the pieces are in
       const t = addTeamDemo(dept, title);
       const mdl = chosenModel(); t.modelUsed = mdl || officeModel; t.modelFrom = mdl ? 'task' : 'office'; const ef = effortUsedFor(t.modelUsed); t.effortUsed = ef.effort || ''; t.effortFrom = ef.from;
       resetModel(); resetTeam(); P_.input.value = ''; updateHint();
       say(`Added — <b>${agentOf(t.agent).name}</b> has it with ${esc(membersText(t))}.`); setTimeout(updateHint, 3200); P_.input.blur();
+      addChatMsg(leadOf(dept).name, `Team task assigned to ${membersText(t)}.`, false, DEPTS[dept]?.chip);
       return;
     }
     const { agent: a } = route(dept, title);
@@ -454,7 +554,11 @@ export function initTasks(ctx) {
     if (t) { const mdl = chosenModel(); t.modelUsed = mdl || officeModel; t.modelFrom = mdl ? 'task' : 'office'; const ef = effortUsedFor(t.modelUsed); t.effortUsed = ef.effort || ''; t.effortFrom = ef.from; }
     resetModel();
     P_.input.value = ''; updateHint();
-    if (t) { say(`Added — <b>${a.name}</b> has it.`); setTimeout(updateHint, 2600); P_.input.blur(); }
+    if (t) {
+      say(`Added — <b>${a.name}</b> has it.`);
+      addChatMsg(a.name, `Assigned "${title}". Starting task.`, false, DEPTS[a.dept]?.chip);
+      setTimeout(updateHint, 2600); P_.input.blur();
+    }
     else say(`<b>${a.name}</b> already has five queued — let one finish first.`);
   }
   /* ---------- V3.2 (16 Sep) demo teams: the same moves on a timer ---------- */
@@ -480,8 +584,8 @@ export function initTasks(ctx) {
     if (live) {
       P_.input.disabled = true; P_.add.disabled = true;
       say('Setting the routine — Claude is naming the agent…', 'busy');
-      try {
-        const r = await fetch(API + '/routines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: k, text, when: rt.when, needsOk: rt.picker ? P_.okc.checked : undefined, model: chosenModel() || undefined, effort: effortSend() }) });
+        const u = JSON.parse(localStorage.getItem('office_user') || '{}');
+        const r = await fetch(API + '/routines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: k, text, when: rt.when, needsOk: rt.picker ? P_.okc.checked : undefined, model: chosenModel() || undefined, effort: effortSend(), user_id: u.id || undefined }) });
         const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText);
         setRoutines([...routines.filter(x => x.id !== j.routine.id), j.routine]);
         const a = agentOf(j.routine.agent);
@@ -556,9 +660,21 @@ export function initTasks(ctx) {
     if (!live || polling) return; polling = true;
     if (usageDue || ++pollN % 5 === 0) { usageDue = false; pollUsage(); }
     try {
-      const [rl, tl] = await Promise.all([fetch(API + '/routines').then(r => r.json()), fetch(API + '/tasks').then(r => r.json())]);
+      const u = JSON.parse(localStorage.getItem('office_user') || '{}');
+      const q = u.id ? `?user_id=${encodeURIComponent(u.id)}` : '';
+      const [rl, tl, stRes] = await Promise.all([
+        fetch(API + '/routines' + q).then(r => r.json()),
+        fetch(API + '/tasks' + q).then(r => r.json()),
+        fetch(API + '/stats' + q).then(r => r.json()).catch(() => null)
+      ]);
       if (Array.isArray(rl.routines)) setRoutines(rl.routines);
-      if (Array.isArray(tl)) for (const st of tl) reconcile(st);
+      if (Array.isArray(tl)) {
+        for (const st of tl) reconcile(st);
+        syncBadges();
+      }
+      if (stRes && window.applyLiveStats) {
+        window.applyLiveStats(stRes);
+      }
       if (calendar) calendar.refresh();
     } catch (e) { console.warn('office poll:', e.message); }
     polling = false;
@@ -673,21 +789,33 @@ export function initTasks(ctx) {
       live = true; setOfficeModel(h.model); setOfficeEffort(h.effort);
       if (h.teams) { teamsCfg = { enabled: h.teams.enabled !== false, max: h.teams.max || 4 }; P_.team.hidden = !teamsCfg.enabled; }
       const mode = panel.querySelector('.tp-mode');
-      if (mode) { mode.hidden = false; mode.textContent = 'LIVE · ' + (h.backend === 'anthropic-sdk' ? 'CLAUDE API' : 'CLAUDE'); mode.classList.add('live'); mode.title = `${h.name} · ${h.backend} · ${modelName(h.model)} by default · brain: ${h.brain}`; }
+      if (mode) { mode.hidden = false; mode.textContent = 'LIVE · ' + (h.backend === 'openrouter' ? 'OPENROUTER' : h.backend === 'anthropic-sdk' ? 'CLAUDE API' : 'CLAUDE'); mode.classList.add('live'); mode.title = `${h.name} · ${h.backend} · ${modelName(h.model)} by default · brain: ${h.brain}`; }
       if (brain) { try { brain.setGraph(await (await fetch(API + '/brain')).json()); } catch {} }
-      const list = await (await fetch(API + '/tasks')).json();
+      tasks.length = 0;
+      for (const k of DEPT_KEYS) doneCount[k] = 0;
+      const u = JSON.parse(localStorage.getItem('office_user') || '{}');
+      const q = u.id ? `?user_id=${encodeURIComponent(u.id)}` : '';
+      const list = await (await fetch(API + '/tasks' + q)).json();
       for (const st of list) {
         if (!agentOf(st.agent)) continue;
+        const deptKey = st.dept || st.department;
         if (st.state === 'done') {
+          doneCount[deptKey] = (doneCount[deptKey] || 0) + 1;
           const t = mk({ agent: st.agent, title: st.title, text: st.text, plan: st.plan, by: 'you', live: true, sid: st.id, state: 'done',
             doneAt: st.doneAt, changedAt: st.doneAt, addedAt: st.addedAt, result: st.result, read: st.read, note: st.note, tools: st.tools || [], used: st.used || [], error: !!st.error, last: 'done' });
           if (st.team) syncTeam(t, st, true);
           deliver(t);
-        } else reconcile(st); // next, doing (the server may be running it), waiting for your OK, scheduled for a date — pick it up again
+        } else reconcile(st); // next, doing, waiting, scheduled
       }
+      syncBadges();
       dirty = true;
+      render(true);
+      renderBoard();
       if (onLive) onLive(h);
-      await poll(); setInterval(poll, 6000); // V3.5: routines fire on the server's clock — the page keeps up
+      await poll();
+      setInterval(poll, 3000);
+      window.refreshOfficeRealtime = () => poll();
+      window.onSupabaseTaskChange = () => poll();
     } catch (e) { console.warn('office server not reachable — running offline:', e.message); }
   }
   connect();
@@ -844,7 +972,7 @@ export function initTasks(ctx) {
     const tot = st => DEPT_KEYS.reduce((s, k) => s + deptTasks(k, st).length, 0);
     const doneAll = DEPT_KEYS.reduce((s, k) => s + doneCount[k], 0);
     return `<div class="bd-head">
-        <span class="b-name"><span class="bd-title">Agents Office</span>Today's board</span>
+        <span class="b-name"><span class="bd-title">Blackpeak Office</span>Today's board</span>
         <span class="bd-stats"><span>SCHEDULED<b>${routines.length + tot('scheduled')}</b></span><span>IN PROGRESS<b>${tot('doing')}</b></span><span>BACKLOG<b>${tot('next')}</b></span><span>WAITING<b>${tot('waiting')}</b></span><span>DONE<b>${doneAll}</b></span></span></div>
       <div class="bd-lanes"><div class="lh"></div>${COLS.map(([, lab]) => `<div class="lh">${lab}</div>`).join('')}
       ${DEPT_KEYS.map(k => {
@@ -952,11 +1080,11 @@ export function initTasks(ctx) {
           const ps = tasks.filter(x => x.parent === d.id);
           d.progress = ps.length ? Math.min(0.96, ps.reduce((s, p) => s + (p.state === 'done' ? 1 : p.progress || 0), 0) / ps.length) : Math.min(0.5, (now - d.startedAt) / d.dur);
           if (ps.length && ps.every(p => p.state === 'done')) { d.progress = 1; complete(d); }
-        } else {
+        } else if (!live) {
           d.progress = Math.min(1, (now - d.startedAt) / d.dur);
           if (d.progress >= 1) complete(d);
         }
-      } else {
+      } else if (!live) {
         const nx = agentTasks(id, 'next').sort((a, b) => a.addedAt - b.addedAt)[0];
         if (nx) { start(nx, now); r.nextBrainAt = null; }
         else if (!r.nextBrainAt) r.nextBrainAt = now + 6000 + Math.random() * 16000;
@@ -1011,8 +1139,8 @@ export function initTasks(ctx) {
     tasks.splice(tasks.indexOf(t), 1); dirty = true; feedPush(R[t.agent], '✕', `Cancelled: ${t.title}`);
     return true;
   }
-  const calendar = initCalendar({ tasks, routines, agentOf, DEPTS, DEPT_KEYS, RT_DEPTS, rtRefuse, create: createScheduled, createRoutine: createRoutineAt, cancelTask: cancelScheduled, rtAct, openAgent: (id, tab) => openAgent && openAgent(id, tab), esc, isLive: () => live, officeModel: () => officeModel, MODEL_KEYS, modelName, business: () => document.title.replace(/ — Agents Office$/, ''), currentDept: () => dept });
+  const calendar = initCalendar({ tasks, routines, agentOf, DEPTS, DEPT_KEYS, RT_DEPTS, rtRefuse, create: createScheduled, createRoutine: createRoutineAt, cancelTask: cancelScheduled, rtAct, openAgent: (id, tab) => openAgent && openAgent(id, tab), esc, isLive: () => live, officeModel: () => officeModel, MODEL_KEYS, modelName, business: () => document.title.replace(/ — (?:Agents|Blackpeak) Office$/, ''), currentDept: () => dept });
   return { tick, toggle, open, close, openFor, isOpen, boardWidth, onFocusChange, onStuck, onResolve, calendar, createScheduled, cancelScheduled,
-           handleChat, addTask, revise, rowHTML, setDept, tasks, panelWidth: () => panel.offsetWidth, isLive: () => live,
+           handleChat, addTask, revise, rowHTML, setDept, tasks, panelWidth: () => (chatPanel ? chatPanel.offsetWidth : (panel ? panel.offsetWidth : 400)), isLive: () => live,
            routines, addRoutine, rtAct, railFor, syncPills, refresh: poll, resolveLive, pendingReject, rejectLive, officeModel: () => officeModel, chosenModel, chosenEffort };
 }

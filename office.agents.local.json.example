@@ -1,0 +1,29 @@
+{
+  "_about": "Override specific agent seats with your real instructions and tools. Id and department are fixed (35 seats total). Leave untouched agents out of this list.",
+  "agents": [
+    {
+      "id": "elead",
+      "name": "INBOX CHIEF",
+      "role": "Chief Email & Calendar Coordinator",
+      "does": "Triages incoming emails, checks our real calendar, drafts replies, and alerts me on urgent client messages.",
+      "tools": ["gmail", "googlecalendar"],
+      "brief": "Never send an email without my explicit approval. Check calendar conflicts before confirming meetings."
+    },
+    {
+      "id": "mlead",
+      "name": "MARKETING LEAD",
+      "role": "Social Media & Marketing Director",
+      "does": "Plans social media posts for Meta and Twitter, tracks post engagement, and drafts weekly campaign updates.",
+      "tools": ["meta", "twitter", "canva"],
+      "brief": "Follow our brand voice in 20-Brand/voice.md. Focus on authentic storytelling and concise copy."
+    },
+    {
+      "id": "enzo",
+      "name": "OUTREACH",
+      "role": "Sales & Relationship Agent",
+      "does": "Researches potential clients, prepares personalized email outreach, and tracks leads in our CRM notes.",
+      "tools": ["gmail", "googlecalendar"],
+      "brief": "All emails must reference specific client needs. Keep messages under 150 words."
+    }
+  ]
+}

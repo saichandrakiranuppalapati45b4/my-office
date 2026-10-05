@@ -19,10 +19,29 @@ let tasks = null; // V3 task boards — initialised after the rail constants exi
 
 /* ---------- renderer / scene / camera ---------- */
 const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  alpha: true,
+  powerPreference: 'high-performance',
+  precision: 'mediump'
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.VSMShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+
+// Context loss auto-recovery
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  console.warn('THREE.WebGLRenderer: Context Lost. Requesting restore...');
+}, false);
+
+canvas.addEventListener('webglcontextrestored', () => {
+  console.log('THREE.WebGLRenderer: Context Restored. Resuming render.');
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  applyCamera();
+}, false);
 
 const scene = new THREE.Scene();
 
@@ -38,9 +57,11 @@ const CAM_DIST = 220;
 const OVERVIEW = { base: [-9, 0, -9], zoom: 0.8 }; // (-9,-9) shifts the scene straight DOWN the screen, no sideways drift
 const SR_ = new THREE.Vector3(1, 0, -1).normalize();
 function overviewPos() {
-  const pw = (tasks ? tasks.panelWidth() : 400) + 30;
+  const leftW = 380 + 18;
+  const rightW = (tasks ? tasks.panelWidth() : 400) + 18;
+  const netShift = (rightW - leftW) / 2;
   const ppw = OVERVIEW.zoom * innerHeight / (2 * FR);
-  const sh = (pw / 2) / ppw;
+  const sh = netShift / ppw;
   return [OVERVIEW.base[0] + SR_.x * sh, 0, OVERVIEW.base[2] + SR_.z * sh];
 }
 const view = { target: new THREE.Vector3(...overviewPos()), zoom: OVERVIEW.zoom, arc: 0 };
@@ -102,11 +123,11 @@ scene.add(hemi);
 const key = new THREE.DirectionalLight(0xfff1dd, 2.2);
 key.position.set(-60, 90, 20);
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(1024, 1024);
 key.shadow.camera.left = -95; key.shadow.camera.right = 95;
 key.shadow.camera.top = 95; key.shadow.camera.bottom = -95;
 key.shadow.camera.far = 400;
-key.shadow.radius = 7; key.shadow.blurSamples = 12;
+key.shadow.radius = 2.5;
 key.shadow.bias = -0.0004;
 scene.add(key);
 
@@ -136,6 +157,53 @@ for (const [key_, L] of Object.entries(LAYOUT)) {
   g.add(plinth);
   plinth.traverse(o => { if (o.isMesh) { o.userData.dept = key_; clickTargets.push(o); } });
   plinth.children[0].userData.part = 'plinth'; plinth.children[1].userData.part = 'floor'; plinth.children[1].userData.chip = dept.chip; // dark mode re-tints these
+
+  if (key_ === 'ceo') {
+    // Executive Central Command Console Display
+    const consoleGroup = new THREE.Group();
+    const screenBack = rbox(7.2, 0.2, 3.4, '#1A1A24', 0.12);
+    screenBack.position.set(0, 3.2, -8.2);
+    consoleGroup.add(screenBack);
+    // Gold stand pillars
+    const leg1 = rbox(0.2, 0.2, 3.0, '#D4AF37', 0.05);
+    leg1.position.set(-2.5, 1.5, -8.2);
+    const leg2 = rbox(0.2, 0.2, 3.0, '#D4AF37', 0.05);
+    leg2.position.set(2.5, 1.5, -8.2);
+    consoleGroup.add(leg1, leg2);
+    // Live Canvas Texture showing Executive Command Center
+    const scCanvas = document.createElement('canvas');
+    scCanvas.width = 512; scCanvas.height = 256;
+    const cx = scCanvas.getContext('2d');
+    cx.fillStyle = '#0F111A'; cx.fillRect(0, 0, 512, 256);
+    cx.fillStyle = '#6366F1'; cx.fillRect(0, 0, 512, 28);
+    cx.fillStyle = '#FFFFFF'; cx.font = 'bold 15px Menlo, monospace';
+    cx.fillText('● BLACKPEAK EXECUTIVE COMMAND', 14, 19);
+    cx.fillStyle = '#A5B4FC'; cx.font = '12px Menlo, monospace';
+    cx.fillText('ORCHESTRATION: ALL 6 PODS SYNCHRONIZED', 14, 52);
+    cx.fillStyle = '#10B981'; cx.fillText('▸ DISPATCH STATUS: READY FOR DIRECTIVES', 14, 76);
+    cx.fillStyle = '#E0E7FF'; cx.fillText('▸ EMAILS · MARKETING · OPS · SALES · FIN · DELIVERY', 14, 102);
+    cx.fillStyle = '#F59E0B'; cx.fillText('▸ REALTIME RLS DB: CONNECTED [user.id]', 14, 128);
+    // 6 department status indicators
+    const dots = [
+      { name: 'EMAILS', col: '#5ADEB7', x: 20 },
+      { name: 'MKTG',   col: '#E69393', x: 100 },
+      { name: 'OPS',    col: '#BFA2E3', x: 180 },
+      { name: 'SALES',  col: '#EADC8F', x: 260 },
+      { name: 'FIN',    col: '#98A5EF', x: 340 },
+      { name: 'DELIV',  col: '#8FD3F4', x: 420 },
+    ];
+    dots.forEach(d => {
+      cx.fillStyle = d.col; cx.beginPath(); cx.arc(d.x + 8, 180, 6, 0, Math.PI * 2); cx.fill();
+      cx.fillStyle = '#94A3B8'; cx.font = 'bold 10px Menlo, monospace'; cx.fillText(d.name, d.x + 18, 184);
+      cx.fillStyle = '#34D399'; cx.fillText('ACTIVE', d.x + 18, 198);
+    });
+    const scTex = new THREE.CanvasTexture(scCanvas);
+    scTex.colorSpace = THREE.SRGBColorSpace;
+    const scMesh = new THREE.Mesh(new THREE.PlaneGeometry(6.9, 3.1), new THREE.MeshBasicMaterial({ map: scTex }));
+    scMesh.position.set(0, 3.2, -8.08);
+    consoleGroup.add(scMesh);
+    g.add(consoleGroup);
+  }
 
   // no floor titles — the billboards name each department (AJ's call, M2.3)
   scene.add(g);
@@ -180,12 +248,21 @@ function tickSweep(now) {
   return { theta, strength: domS, col: domDept ? DEPTS[domDept].chip : '#FFFFFF' };
 }
 
-// walkways dept -> brain
+// walkways dept -> brain (Delivery bridges to CEO, CEO bridges to Brain)
 for (const k of DEPT_KEYS) {
   const L = LAYOUT[k];
-  const sx = Math.sign(L.pos[0]), sz = Math.sign(L.pos[1]);
-  const from = [L.pos[0] - sx * (L.w / 2 - 1), L.pos[1] - sz * (L.d / 2 - 1)];
-  const to = [sx * 6.5, sz * 6.5];
+  let from, to;
+  if (k === 'delivery') {
+    from = [0, L.pos[1] + (L.d / 2 - 1)]; // [0, -39]
+    to = [0, LAYOUT.ceo.pos[1] - (LAYOUT.ceo.d / 2 - 1)]; // [0, -32] (north edge of CEO pod)
+  } else if (k === 'ceo') {
+    from = [0, L.pos[1] + (L.d / 2 - 1)]; // [0, -14]
+    to = [0, -6.5]; // north edge of Brain
+  } else {
+    const sx = Math.sign(L.pos[0]), sz = Math.sign(L.pos[1]);
+    from = [L.pos[0] - sx * (L.w / 2 - 1), L.pos[1] - sz * (L.d / 2 - 1)];
+    to = [sx * 6.5, sz * 6.5];
+  }
   const walk = makeWalkway(from, to);
   walk.userData.dept = k; walk.userData.part = 'walkway';
   scene.add(walk);
@@ -200,7 +277,7 @@ deptRT.brain.group.traverse(o => { if ((o.isMesh || o.isSprite) && !o.userData.d
    the brain↔dept relationship shows through the badge sweep + meetings.) */
 
 /* desks + people per dept */
-const COLS = { emails: 2, sales: 2, marketing: 2, ops: 2, fin: 2, delivery: 2 };
+const COLS = { ceo: 2, emails: 2, sales: 2, marketing: 2, ops: 2, fin: 2, delivery: 2 };
 for (const a of AGENTS) {
   const dRT = deptRT[a.dept];
   const dept = DEPTS[a.dept];
@@ -322,27 +399,30 @@ function tickDim(dt) {
 const kv = id => KPIS.find(k => k.id === id).val;
 let brainNotes = brain.state.notes;
 const BB_ROWS = profileRows() || {
+  ceo: [
+    ['DIRECTIVES RUN', () => STATS.ceoDirectives || (tasks ? tasks.deptTasks('ceo', 'done').length : 0)],
+    ['DEPT REPORTS IN', () => STATS.ceoReports || 0]],
   emails: [
-    ['EMAILS SENT', () => STATS.emailsSent],
-    ['REPLIES DRAFTED', () => STATS.drafts]],
+    ['EMAILS SENT', () => STATS.emailsSent || (tasks ? tasks.deptTasks('emails', 'done').length : 0)],
+    ['REPLIES DRAFTED', () => STATS.drafts || (tasks ? tasks.deptTasks('emails').filter(t => t.state === 'waiting' || t.state === 'next' || t.state === 'doing').length : 0)]],
   delivery: [
-    ['REPORTS SENT', () => STATS.reports],
-    ['ON TRACK', () => STATS.onTrack + ' / ' + STATS.projects]],
+    ['REPORTS SENT', () => STATS.reports || (tasks ? tasks.deptTasks('delivery', 'done').length : 0)],
+    ['ON TRACK', () => typeof STATS.onTrack === 'string' && STATS.onTrack.includes('/') ? STATS.onTrack : `${STATS.onTrack || 0} / ${STATS.projects || 0}`]],
   sales: [
-    ['CALLS S·A·J', () => STATS.spencer + '·' + STATS.arwin + '·' + STATS.jack],
-    ['NEW MANAGERS', () => STATS.managers],
-    ['AUTO-ONBOARDED', () => STATS.autoOnb]],
+    ['CALLS S·A·J', () => `${STATS.spencer || 0}·${STATS.arwin || 0}·${STATS.jack || 0}`],
+    ['NEW MANAGERS', () => STATS.managers || 0],
+    ['AUTO-ONBOARDED', () => STATS.autoOnb || 0]],
   marketing: [
-    ['NEW INSIGHTS', () => STATS.insMkt],
-    ['COST PER USER', () => '$' + Math.round(STATS.cpa)]],
+    ['NEW INSIGHTS', () => STATS.insMkt || (tasks ? tasks.deptTasks('marketing', 'done').length : 0)],
+    ['COST PER USER', () => '$' + Math.round(STATS.cpa || 0)]],
   ops: [
-    ['PROPOSALS MADE', () => Math.round(kv('proposals'))],
-    ['NEW INSIGHTS', () => STATS.insOps]],
+    ['PROPOSALS MADE', () => Math.round(kv('proposals') || (tasks ? tasks.deptTasks('ops', 'done').length : 0))],
+    ['NEW INSIGHTS', () => STATS.insOps || 0]],
   fin: [
-    ['INVOICES ISSUED', () => Math.round(kv('invoices'))],
-    ['BILLS PAID', () => STATS.billsPaid]],
+    ['INVOICES ISSUED', () => Math.round(kv('invoices') || (tasks ? tasks.deptTasks('fin', 'done').length : 0))],
+    ['BILLS PAID', () => STATS.billsPaid || 0]],
   brain: [
-    ['NOTES INDEXED', () => brainNotes.toLocaleString('en-NZ')]],
+    ['NOTES INDEXED', () => (brainNotes || 0).toLocaleString('en-NZ')]],
 };
 if (PROFILE && !BB_ROWS.brain) BB_ROWS.brain = [['NOTES INDEXED', () => brainNotes.toLocaleString('en-NZ')]];
 for (const k of [...DEPT_KEYS, 'brain']) {
@@ -381,9 +461,10 @@ for (const k of [...DEPT_KEYS, 'brain']) {
   // side = hangs off the pod's edge, vertically centred (fin: its back corner is the Brain;
   // ops: its back corner is the marketing pod's front row).
   const ANCHOR = {
+    ceo:       [0, 10.2, -34],
     marketing: [-36, 8.6, 13.4],
     emails:    [-30, 8.6, -32.6],
-    delivery:  [0, 10.6, -57.6],   // y 10.6: the top-bar clamp otherwise lands it on the back-row pills
+    delivery:  [0, 10.6, -65],   // y 10.6: delivery back row
     sales:     [48, 8.6, -32],     // over the pod's right corner — past the DELIVERY pod's desks and the Sales Lead pill
     ops:       [-13.5, 4, 54],     // side LEFT
     fin:       [43.5, 4, 17],      // side RIGHT
@@ -412,6 +493,124 @@ function updateBillboards() {
     });
   }
 }
+window.updateBillboards = updateBillboards;
+
+window.applyLiveStats = function(s) {
+  if (!s) return;
+  // If the server returns old cached mock data, reject it
+  if (s.ceoDirectives === 18 && s.ceoReports === 12 && s.emailsSent === 18) return;
+  if (s.cpa === 37.5) s.cpa = 0;
+  if (s.ceoDirectives !== undefined) STATS.ceoDirectives = s.ceoDirectives;
+  if (s.ceoReports !== undefined) STATS.ceoReports = s.ceoReports;
+  if (s.emailsSent !== undefined) STATS.emailsSent = s.emailsSent;
+  if (s.drafts !== undefined) STATS.drafts = s.drafts;
+  if (s.reports !== undefined) STATS.reports = s.reports;
+  if (s.projects !== undefined) STATS.projects = s.projects;
+  if (s.onTrack !== undefined) STATS.onTrack = s.onTrack;
+  if (s.spencer !== undefined) STATS.spencer = s.spencer;
+  if (s.arwin !== undefined) STATS.arwin = s.arwin;
+  if (s.jack !== undefined) STATS.jack = s.jack;
+  if (s.managers !== undefined) STATS.managers = s.managers;
+  if (s.autoOnb !== undefined) STATS.autoOnb = s.autoOnb;
+  if (s.insMkt !== undefined) STATS.insMkt = s.insMkt;
+  if (s.cpa !== undefined) STATS.cpa = s.cpa;
+  if (s.proposals !== undefined) { const k = KPIS.find(x => x.id === 'proposals'); if (k) k.val = s.proposals; }
+  if (s.insOps !== undefined) STATS.insOps = s.insOps;
+  if (s.invoices !== undefined) { const k = KPIS.find(x => x.id === 'invoices'); if (k) k.val = s.invoices; }
+  if (s.billsPaid !== undefined) STATS.billsPaid = s.billsPaid;
+  if (s.brainNotes !== undefined) brainNotes = s.brainNotes;
+  updateBillboards();
+};
+
+window.runRealtimeSyncLoop = function() {
+  async function tickRealtime() {
+    try {
+      const u = JSON.parse(localStorage.getItem('office_user') || '{}');
+      const q = u.id ? `?user_id=${encodeURIComponent(u.id)}` : '';
+      const [tl, nl, cl] = await Promise.all([
+        fetch('/api/tasks' + q).then(r => r.json()).catch(() => []),
+        fetch('/api/notes' + q).then(r => r.json()).catch(() => []),
+        fetch('/api/clients' + q).then(r => r.json()).catch(() => [])
+      ]);
+      const tasksList = Array.isArray(tl) ? tl : [];
+      const notesList = Array.isArray(nl) ? nl : [];
+      const clientsList = Array.isArray(cl) ? cl : [];
+
+      const doneD = d => tasksList.filter(t => (t.dept === d || t.department === d) && t.state === 'done').length;
+      const waitD = d => tasksList.filter(t => (t.dept === d || t.department === d) && (t.state === 'waiting' || t.state === 'next' || t.state === 'doing')).length;
+
+      const actCl = clientsList.filter(c => c.status === 'active' || c.status === 'onboarded').length;
+      const leadCl = clientsList.filter(c => c.status === 'lead').length;
+
+      const sp = tasksList.filter(t => (t.agent === 'spencer' || t.agent === 'enzo') && t.state === 'done').length;
+      const ar = tasksList.filter(t => (t.agent === 'arwin' || t.agent === 'pros') && t.state === 'done').length;
+      const jk = tasksList.filter(t => (t.agent === 'jack' || t.agent === 'piper') && t.state === 'done').length;
+
+      const mktN = notesList.filter(n => n.category === 'marketing' || n.category === 'insight' || n.department === 'marketing').length + doneD('marketing');
+      const opsN = notesList.filter(n => n.category === 'operations' || n.category === 'compliance' || n.category === 'sop' || n.department === 'ops').length + doneD('ops');
+      const propN = notesList.filter(n => n.category === 'proposal').length + tasksList.filter(t => (t.agent === 'piper' || t.dept === 'ops' || t.department === 'ops') && t.state === 'done').length;
+      const invN = notesList.filter(n => n.category === 'invoice' || n.department === 'fin').length + doneD('fin');
+      const paidN = tasksList.filter(t => (t.dept === 'fin' || t.department === 'fin') && t.state === 'done').length;
+
+      const delTotal = clientsList.length > 0 ? clientsList.length : tasksList.filter(t => t.dept === 'delivery' || t.department === 'delivery').length;
+      const delTrack = clientsList.length > 0 ? actCl : tasksList.filter(t => (t.dept === 'delivery' || t.department === 'delivery') && (t.state === 'doing' || t.state === 'done')).length;
+
+      STATS.ceoDirectives = doneD('ceo');
+      STATS.ceoReports = notesList.filter(n => n.department === 'ceo' || n.category === 'executive' || n.category === 'briefing').length + tasksList.filter(t => t.by === 'ceo' && t.state === 'done').length;
+      STATS.emailsSent = doneD('emails');
+      STATS.drafts = waitD('emails');
+      STATS.reports = doneD('delivery');
+      STATS.projects = delTotal;
+      STATS.onTrack = `${delTrack} / ${delTotal}`;
+      STATS.spencer = sp;
+      STATS.arwin = ar;
+      STATS.jack = jk;
+      STATS.managers = leadCl;
+      STATS.autoOnb = actCl;
+      STATS.insMkt = mktN;
+      STATS.cpa = 0;
+      STATS.insOps = opsN;
+      STATS.billsPaid = paidN;
+      brainNotes = notesList.length;
+
+      let kpProp = KPIS.find(x => x.id === 'proposals'); if (kpProp) kpProp.val = propN;
+      let kpInv = KPIS.find(x => x.id === 'invoices'); if (kpInv) kpInv.val = invN;
+
+      updateBillboards();
+
+      const updates = {
+        'ceo-0': String(STATS.ceoDirectives),
+        'ceo-1': String(STATS.ceoReports),
+        'emails-0': String(STATS.emailsSent),
+        'emails-1': String(STATS.drafts),
+        'delivery-0': String(STATS.reports),
+        'delivery-1': `${delTrack} / ${delTotal}`,
+        'sales-0': `${sp}·${ar}·${jk}`,
+        'sales-1': String(leadCl),
+        'sales-2': String(actCl),
+        'marketing-0': String(mktN),
+        'marketing-1': '$0',
+        'ops-0': String(propN),
+        'ops-1': String(opsN),
+        'fin-0': String(invN),
+        'fin-1': String(paidN),
+        'brain-0': String(notesList.length)
+      };
+
+      for (const [key, val] of Object.entries(updates)) {
+        document.querySelectorAll(`[data-m="${key}"], [data-rm="${key}"]`).forEach(el => {
+          if (el.textContent !== val) {
+            el.textContent = val;
+          }
+        });
+      }
+      const bEl = deptRT.brain && deptRT.brain.badge && deptRT.brain.badge.querySelector('b');
+      if (bEl) bEl.textContent = notesList.length.toLocaleString('en-NZ');
+    } catch (e) {}
+  }
+  tickRealtime();
+  setInterval(tickRealtime, 1500);
+};
 
 /* ---------- meeting bubble ---------- */
 const bubble = makeBubbleSprite();
@@ -590,7 +789,7 @@ const vignette = document.getElementById('vignette');
 const mMsgs = document.getElementById('mMsgs');
 let modalOpen = null, modalTab = 'chat'; // modalOpen = agent id open in the rail slide-over
 // V3.3: the rail docks LEFT for every department — the task panel has the right side
-const RAIL_SIDE = { marketing: 'left', emails: 'left', sales: 'left', ops: 'left', fin: 'left', delivery: 'left' };
+const RAIL_SIDE = { ceo: 'left', marketing: 'left', emails: 'left', sales: 'left', ops: 'left', fin: 'left', delivery: 'left' };
 const SCREEN_RIGHT = new THREE.Vector3(1, 0, -1).normalize();
 
 function ensureChat(id) {
@@ -885,7 +1084,7 @@ function mockupFor(id) {
       <div class="d-line"><span>Scope</span><b>matches the brief ✓</b></div>
       <div class="d-p">Hours and scope check out — only the rate is off, and there's no signed variation covering it. Recommend holding payment and querying the rate before it's paid.</div></div>`;
     case 'piper': return `<div class="mk mk-doc">
-      <div class="d-brand">AGENTS OFFICE — PROPOSAL</div>
+      <div class="d-brand">BLACKPEAK OFFICE — PROPOSAL</div>
       <div class="d-title">Ridgeline Property Group</div>
       <div class="d-line"><span>Seats</span><b>12</b></div>
       <div class="d-line"><span>Plan</span><b>Growth</b></div>
@@ -1193,7 +1392,12 @@ function tickSim(now, dt) {
     } else if (r.state === 'walking' || r.state === 'returning') {
       posePerson(r.person, 'walk', now);
       if (walkStep(r, dt)) {
-        if (r.state === 'walking') {
+        if (r.mission) {
+          r.state = 'working';
+          r.person.position.copy(r.seat);
+          r.person.rotation.y = r.seatRot;
+          r.mission = false;
+        } else if (r.state === 'walking') {
           r.state = 'atBrain';
           r.person.rotation.y = r.person.position.x < 2 ? Math.PI / 2 : -Math.PI / 2;
         } else {
@@ -1236,7 +1440,7 @@ function tickSim(now, dt) {
       r.warn.scale.set(k, k, 1);
     }
   }
-  // ambient emoji work-bubbles pop over random desks every beat or two
+  // Ambient emoji work-bubbles pop over random desks every beat or two
   if (now > nextEmoteAt) {
     const ids = Object.keys(R).filter(id => R[id].state === 'working');
     if (ids.length) spawnEmote(R[ids[Math.floor(Math.random() * ids.length)]],
@@ -1273,9 +1477,65 @@ function tickSim(now, dt) {
       const ss = screenSets[Math.floor(Math.random() * screenSets.length)];
       ss.screenSet.draw(sample(WORKLINES[ss.dept], 3).map(l => l.slice(0, 28)));
       ss.screenSet.tex.needsUpdate = true;
-    }
   }
 }
+
+/* ---------- Head Table / CEO physical delegation mission ---------- */
+window.dispatchCeoMission = function(targetDepts, taskTitle) {
+  if (!Array.isArray(targetDepts) || !targetDepts.length) return;
+  const runner = R['cos'] || R['exec_ops'] || R['ceo_lead'];
+  if (!runner) return;
+  const waypoints = [runner.seat.clone()];
+  if (deptRT.ceo && deptRT.ceo.gate && deptRT.ceo.brainGate) {
+    waypoints.push(deptRT.ceo.gate.clone().setY(0.12));
+    waypoints.push(deptRT.ceo.brainGate.clone().setY(0.12));
+  }
+  const visitedAgents = [];
+  for (const dk of targetDepts) {
+    const drt = deptRT[dk];
+    if (!drt) continue;
+    const targetAgent = AGENTS.find(a => a.dept === dk && a.lead) || AGENTS.find(a => a.dept === dk);
+    const targetR = targetAgent && R[targetAgent.id];
+    if (drt.brainGate) waypoints.push(drt.brainGate.clone().setY(0.12));
+    if (drt.gate) waypoints.push(drt.gate.clone().setY(0.12));
+    if (targetR) {
+      waypoints.push(targetR.seat.clone().add(new THREE.Vector3(1.2, 0, 1.2)).setY(0.12));
+      visitedAgents.push(targetR);
+    }
+    if (drt.gate) waypoints.push(drt.gate.clone().setY(0.12));
+    if (drt.brainGate) waypoints.push(drt.brainGate.clone().setY(0.12));
+  }
+  if (deptRT.ceo && deptRT.ceo.brainGate && deptRT.ceo.gate) {
+    waypoints.push(deptRT.ceo.brainGate.clone().setY(0.12));
+    waypoints.push(deptRT.ceo.gate.clone().setY(0.12));
+  }
+  waypoints.push(runner.seat.clone());
+
+  runner.path = waypoints;
+  runner.pathI = 0;
+  runner.state = 'walking';
+  runner.mission = true;
+  spawnEmote(runner, '⚡');
+  feedPush(runner, '⚡', `Dispatched directive: ${taskTitle || 'Cross-dept mandate'}`);
+
+  const checkInterval = setInterval(() => {
+    if (!runner.mission || runner.state === 'working') {
+      clearInterval(checkInterval);
+      spawnEmote(runner, '✓');
+      feedPush(runner, '✓', 'All department handoffs delivered. Head Table monitoring.');
+    } else {
+      for (const ta of visitedAgents) {
+        if (!ta.cheered && runner.person.position.distanceTo(ta.seat) < 3.8) {
+          ta.cheered = true;
+          spawnEmote(ta, '⚑');
+          spawnEmote(runner, '📋');
+          ta.cheerUntil = performance.now() + 3500;
+          feedPush(ta, '⚑', `Received directive from Head Table: ${taskTitle || 'New operational task'}`);
+        }
+      }
+    }
+  }, 250);
+};
 
 /* ---------- zoom LOD + HTML overlay projection ---------- */
 const v3 = new THREE.Vector3();
@@ -1297,15 +1557,15 @@ function tickLOD() {
     // keep billboards fully on screen (camera-readability rule)
     const bh = d.badge.offsetHeight * badgeScale, bw = d.badge.offsetWidth * badgeScale;
     let xf;
+    const rightEdge = innerWidth - ((tasks ? tasks.panelWidth() : 400) + 26);
+    const leftEdge = 380 + 26;
     if (d.sideBadge) { // anchored by an edge, vertically centred (emails/sales/fin/delivery)
-      const rightEdge = innerWidth - ((tasks ? tasks.panelWidth() : 400) + 26); // V3.3: never under the panel
       sy = clamp(sy, 64 + bh / 2, innerHeight - bh / 2 - 8);
-      if (d.sideLeft) { sx = clamp(sx, bw + 8, rightEdge); xf = 'translate(-100%,-50%)'; }
-      else { sx = clamp(sx, 8, rightEdge - bw); xf = 'translate(0,-50%)'; }
+      if (d.sideLeft) { sx = clamp(sx, leftEdge + bw, rightEdge); xf = 'translate(-100%,-50%)'; }
+      else { sx = clamp(sx, leftEdge, rightEdge - bw); xf = 'translate(0,-50%)'; }
     } else {
-      const rightEdge = innerWidth - ((tasks ? tasks.panelWidth() : 400) + 26);
       sy = clamp(sy, bh + 64, innerHeight - 12);
-      sx = clamp(sx, bw / 2 + 8, rightEdge - bw / 2);
+      sx = clamp(sx, bw / 2 + leftEdge, rightEdge - bw / 2);
       xf = 'translate(-50%,-100%)';
     }
     d.badge.style.transform = `translate(${sx}px,${sy}px) ${xf} scale(${badgeScale})`;
@@ -1370,13 +1630,27 @@ function applyRoster(agents) {
 tasks = initTasks({
   hud, R, deptRT, RAIL_SIDE, spawnEmote, chatPush, chatHist, feedPush, zoomToApproval, enterFocus, openAgent, esc,
   brainWrite: (id, title) => brain.write(id, title), brain,
-  onLive: (h) => { document.querySelector('#topbar .brand .ver').textContent = 'BETA'; document.title = `${h.name} — Agents Office`; brain.setOwner(h.name); brain.setQuiet(true); applyRoster(h.agents); },
+  onLive: (h) => {
+    document.querySelector('#topbar .brand .ver').textContent = 'BETA';
+    document.title = h.name ? (h.name.includes('Blackpeak') ? h.name : `${h.name} — Blackpeak Office`) : 'Blackpeak Office';
+    brain.setOwner(h.name);
+    brain.setQuiet(true);
+    applyRoster(h.agents);
+    try {
+      const u = JSON.parse(localStorage.getItem('office_user') || '{}');
+      const q = u.id ? `?user_id=${encodeURIComponent(u.id)}` : '';
+      fetch('/api/stats' + q).then(r => r.json()).then(s => {
+        if (s && window.applyLiveStats) window.applyLiveStats(s);
+      }).catch(() => {});
+    } catch (e) {}
+  },
   onTools: (agentId, keys) => mcp.onToolsUsed(agentId, keys),
   requestApproval, setStuck: setStuckLive,
   onUsage: (u) => { if (mcp && mcp.setUsage) mcp.setUsage(u); }, // V3.6: the plan's gauge in the top bar
   getFocused: () => focused, getZoom: () => view.zoom, getFocusDim: () => focusDim,
   toScreen: (p) => toScreen(p), reframe,
 });
+if (window.runRealtimeSyncLoop) window.runRealtimeSyncLoop();
 view.target.set(...overviewPos());
 addEventListener('resize', () => { if (!focused && !tween && !HERO) view.target.set(...overviewPos()); });
 const hero = HERO ? initHero({ THREE, scene, R, AGENTS, deptRT, LAYOUT, DEPTS, DEPT_KEYS, view, camera, spawnEmote, isBusy: () => !!focused || !!tween || !!drag }) : null;
@@ -1412,17 +1686,23 @@ window.CC = { hero, flyTo, zoomToDept, zoomOut, zoomToApproval, requestApproval,
 
 let last = performance.now();
 function loop(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  tickTween(now);
-  applyCamera();
-  tickDim(dt);
-  tickSim(now, dt);
-  if (hero) hero.tick(now, dt);
-  tickLOD();
-  tasks.tick(now);
-  mcp.tick(now, dt, view, camera, focused, focusDim);
-  syncOverviewBtn();
-  renderer.render(scene, camera);
+  try {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    tickTween(now);
+    applyCamera();
+    tickDim(dt);
+    tickSim(now, dt);
+    if (hero) hero.tick(now, dt);
+    tickLOD();
+    if (tasks && tasks.tick) tasks.tick(now);
+    if (mcp && mcp.tick) mcp.tick(now, dt, view, camera, focused, focusDim);
+    syncOverviewBtn();
+    if (renderer && renderer.getContext && !renderer.getContext().isContextLost()) {
+      renderer.render(scene, camera);
+    }
+  } catch (err) {
+    console.warn('Render loop frame warning:', err);
+  }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);

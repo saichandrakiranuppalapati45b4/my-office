@@ -52,6 +52,7 @@ import * as usage from './usage.mjs';
 import * as teams from './teams.mjs';
 import { normModel, modelFor, modelArgs, modelId, modelName, MODEL_KEYS, DEFAULT_MODEL, normEffort, effortFor, effortName, EFFORT_KEYS } from './src/models.js';
 import { parseWhen, describe, valid as validWhen, untilText } from './src/when.js';
+import { upsertTask, getTasks, deleteTask, saveNote, getNotes, getClients, addClient, getRoutines, upsertRoutine, deleteRoutine, getRealStats, testConnection, authSignUp, authSignIn, getProfile } from './supabase.mjs';
 
 const cfg = loadConfig();
 const HTML = path.join(ROOT, 'dist', 'command-centre-v2.html'); // built by build.mjs; shipped so npm start works without a build
@@ -82,8 +83,15 @@ const refreshSkills = () => { reloadRoster(); const s = loadSkills(BRAIN, AGENTS
 const leadOf = dept => AGENTS.find(a => a.department === dept && a.lead) || AGENTS.find(a => a.department === dept);
 const setupMap = () => Object.fromEntries(DEPT_KEYS.map(k => [k, onboard.isSetUp(AGENTS, skills, k)]));
 
-let backend = 'claude-cli', sdk = null;
-if (process.env.ANTHROPIC_API_KEY) {
+let backend = 'claude-cli', sdk = null, openrouter = null;
+if (cfg.openrouterApiKey || process.env.OPENROUTER_API_KEY) {
+  backend = 'openrouter';
+  openrouter = {
+    apiKey: cfg.openrouterApiKey || process.env.OPENROUTER_API_KEY,
+    baseURL: cfg.openrouterBaseUrl || process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+    defaultModel: cfg.openrouterModel || process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet'
+  };
+} else if (process.env.ANTHROPIC_API_KEY) {
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     sdk = new Anthropic(); backend = 'anthropic-sdk';
@@ -92,7 +100,23 @@ if (process.env.ANTHROPIC_API_KEY) {
 
 /* ---------- storage ---------- */
 const load = () => { try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { return []; } };
-const save = list => { fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(FILE, JSON.stringify(list, null, 2)); };
+const save = list => {
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(FILE, JSON.stringify(list, null, 2));
+};
+
+// Initial sync from Supabase database
+(async function syncFromSupabase() {
+  try {
+    const dbTasks = await getTasks();
+    if (dbTasks && dbTasks.length > 0) {
+      save(dbTasks);
+      console.log(`  supabase: synchronized ${dbTasks.length} real tasks from database`);
+    }
+  } catch (e) {
+    console.warn('  supabase initial sync notice:', e.message);
+  }
+})();
 const nid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 /* ---------- the usage gauge (V3.6, A3): Claude's own numbers, the office's count underneath ---------- */
 const USTATE = usage.loadState(DATA);
@@ -118,7 +142,148 @@ function ranOn(mu, want) {
   const fam = normModel(want) || cfg.model;
   return keys.find(k => k.includes(fam)) || keys.filter(k => !/haiku/.test(k)).sort((a, b) => (mu[b].outputTokens || 0) - (mu[a].outputTokens || 0))[0] || keys[0];
 }
-async function askX(system, user, { maxTokens = 4000, tools = true, timeout = RUN_TIMEOUT, model = cfg.model, effort = null } = {}) { // model: sonnet · opus · fable · effort: low…max or null = the model's own (src/models.js)
+const OPENROUTER_MODEL_MAP = {
+  sonnet: 'anthropic/claude-3.5-sonnet',
+  opus: 'anthropic/claude-3-opus',
+  fable: 'anthropic/claude-3.5-haiku',
+};
+
+function candidateModelsFor({ model, dept, agent } = {}) {
+  const list = [];
+  const add = m => {
+    if (!m) return;
+    if (Array.isArray(m)) { for (const x of m) add(x); return; }
+    const s = String(m).trim();
+    if (s && !list.includes(s)) list.push(s);
+  };
+
+  // 1. Explicit model request from task / agent if custom (contains / or :)
+  if (agent?.model && (agent.model.includes('/') || agent.model.includes(':'))) add(agent.model);
+  if (model && (model.includes('/') || model.includes(':'))) add(model);
+
+  // 2. Department-specific model
+  if (dept && cfg.models?.departments?.[dept]) {
+    add(cfg.models.departments[dept]);
+  }
+
+  // 3. Agent roster model mapped
+  if (agent?.model && !agent.model.includes('/')) {
+    add(OPENROUTER_MODEL_MAP[normModel(agent.model)]);
+  }
+
+  // 4. Task model mapped
+  if (model && !model.includes('/')) {
+    add(OPENROUTER_MODEL_MAP[normModel(model)]);
+  }
+
+  // 5. Office default
+  add(cfg.models?.default || openrouter?.defaultModel || 'anthropic/claude-3.5-sonnet');
+
+  // 6. Configured fallbacks
+  if (cfg.models?.fallbacks?.length) add(cfg.models.fallbacks);
+
+  // 7. General safety fallbacks
+  add(['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'google/gemini-2.5-pro', 'deepseek/deepseek-chat']);
+
+  return list;
+}
+
+async function askX(system, user, { maxTokens = 4000, tools = true, timeout = RUN_TIMEOUT, model = cfg.model, effort = null, dept = null, agent = null } = {}) { // model: sonnet · opus · fable · effort: low…max or null = the model's own (src/models.js)
+  if (backend === 'openrouter') {
+    if (!openrouter?.apiKey) {
+      throw new Error('OpenRouter API key is not configured. Please set your OpenRouter API key in Workspace Control Hub -> AI Models & Switching.');
+    }
+    const candidates = candidateModelsFor({ model, dept, agent });
+    const messages = [];
+    if (system) messages.push({ role: 'system', content: system });
+    messages.push({ role: 'user', content: user });
+
+    let lastError = null;
+    let switched = false;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const targetModel = candidates[i];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        const res = await fetch(`${openrouter.baseURL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openrouter.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://github.com/ajsahni/agents-office',
+            'X-Title': 'Blackpeak Office'
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            models: candidates.slice(i), // pass candidate list to OpenRouter for provider-level fallback
+            max_tokens: maxTokens,
+            messages
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+
+        if (!res.ok) {
+          const errText = await res.text();
+          const isLimitOrUnavailable = res.status === 429 || res.status === 402 || res.status === 503 || res.status === 502 || res.status === 504 || res.status === 400;
+          if (isLimitOrUnavailable && i < candidates.length - 1) {
+            console.warn(`  ⚠ Model ${targetModel} limit/error (${res.status}: ${errText.slice(0, 100)}). Auto-switching to fallback: ${candidates[i + 1]}`);
+            switched = true;
+            lastError = new Error(`OpenRouter (${targetModel}): ${errText}`);
+            continue; // try next candidate model
+          }
+          throw new Error(`OpenRouter API error ${res.status}: ${errText.slice(0, 300)}`);
+        }
+
+        const data = await res.json();
+        const text = String(data.choices?.[0]?.message?.content || '').trim();
+        const usageOut = data.usage ? {
+          inputTokens: data.usage.prompt_tokens || 0,
+          outputTokens: data.usage.completion_tokens || 0
+        } : null;
+        bumpUsage(usageOut);
+
+        const modelUsed = data.model || targetModel;
+        if (switched) {
+          console.log(`  ✓ Resumed on fallback model: ${modelUsed}`);
+        }
+
+        const toolMatches = [];
+        const usedMatch = text.match(/Used:\s*([^\n\r]+)/i);
+        if (usedMatch) {
+          const usedStr = usedMatch[1].toLowerCase();
+          for (const s of mcp.usable()) {
+            if (usedStr.includes(s.name.toLowerCase()) || (s.key && usedStr.includes(s.key.toLowerCase()))) {
+              toolMatches.push(`mcp__${s.id}__action`);
+            }
+          }
+        }
+        return { text, tools: toolMatches, usage: usageOut, modelId: modelUsed };
+      } catch (err) {
+        clearTimeout(timer);
+        if (err.name === 'AbortError') {
+          if (i < candidates.length - 1) {
+            console.warn(`  ⚠ Model ${targetModel} timed out. Auto-switching to fallback: ${candidates[i + 1]}`);
+            switched = true;
+            lastError = err;
+            continue;
+          }
+          throw new Error(`OpenRouter request took longer than ${timeout / 1000} s`);
+        }
+        if (i < candidates.length - 1 && (err.message?.includes('429') || err.message?.includes('rate limit') || err.message?.includes('credits') || err.message?.includes('quota'))) {
+          console.warn(`  ⚠ Model ${targetModel} limit reached. Auto-switching to fallback: ${candidates[i + 1]}`);
+          switched = true;
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    throw lastError || new Error('All model candidates failed');
+  }
   if (sdk) {
     const res = await sdk.messages.create({ model: modelId(model), max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] });
     if (res.stop_reason === 'refusal') throw new Error('Claude declined this request');
@@ -215,7 +380,7 @@ async function route(dept, text) {
     'Pick the single best agent for the owner\'s request — an agent whose skills match the request is the right one — and return ONLY a JSON object — no prose, no code fences.';
   const user = `Department: ${d.name}\nAgents (id · name · role · what they do):\n${rosterText(dept)}\n\nOwner's request: "${text}"\n\n` +
     'Return: {"agent":"<id from the list>","title":"<clean imperative task title, max 70 characters>","plan":["<step>","<step>","<step>"],"eta_minutes":<integer>,"why":"<one short sentence>","needs_ok":<true if doing this involves sending, posting, paying, deleting or changing anything outside this machine; false if it only reads and reports>}';
-  const j = parseJSON(await ask(system, user, { maxTokens: 800, timeout: 150000, model: 'sonnet' })); // routing is a one-line JSON job: always Sonnet
+  const j = parseJSON(await ask(system, user, { maxTokens: 800, timeout: 150000, model: 'sonnet', dept })); // routing is a one-line JSON job: always Sonnet
   const valid = AGENTS.find(a => a.id === j.agent && a.department === dept);
   const agent = valid ? valid.id : (AGENTS.find(a => a.department === dept && a.lead) || AGENTS.find(a => a.department === dept)).id;
   return { agent, title: String(j.title || text).slice(0, 90), plan: Array.isArray(j.plan) ? j.plan.slice(0, 4).map(String) : [],
@@ -238,7 +403,7 @@ const pickFor = (task, a) => { // model + effort: four places, one precedence (t
   return { pick, eff };
 };
 // persist a task mid-run (a team's pieces move while the run is still going; the page polls /api/tasks)
-function persist(task) { const l = load(); const i = l.findIndex(t => t.id === task.id); if (i >= 0) { l[i] = task; save(l); } }
+function persist(task) { const l = load(); const i = l.findIndex(t => t.id === task.id); if (i >= 0) { l[i] = task; save(l); } upsertTask(task).catch(() => {}); }
 async function run(task, feedback, mode) { // mode: undefined (a task from the bar) · 'routine' (read-only routine) · 'draft' (routine that waits for the OK) · 'approve' (the owner ticked it)
   if (task.team && TEAMS.enabled) { // V3.2 (16 Sep): a team task — the lead plans, the desks work at once, the lead writes the final
     if (mode === 'approve') return runTeamLead(task, feedback, mode); // the outbound step after the OK is the lead's alone
@@ -256,7 +421,7 @@ async function run(task, feedback, mode) { // mode: undefined (a task from the b
   const user = `Task: ${task.title}\nOwner's request: ${task.text}` + (task.plan?.length ? `\nAgreed plan: ${task.plan.join(' → ')}` : '') + routineLine + modeLine +
     (feedback && mode !== 'approve' ? `\n\nThe owner reviewed your previous version and asked for changes: "${feedback}"\nPrevious version:\n${task.result}` : '');
   const { pick, eff } = pickFor(task, a);
-  const { text, tools, modelId: ran } = await askX(system, user, { model: pick.model, effort: eff.effort });
+  const { text, tools, modelId: ran } = await askX(system, user, { model: pick.model, effort: eff.effort, dept: a.department, agent: a });
   if (!text) throw new Error('Claude returned nothing');
   return { result: text, read, tools: toolKeys(tools), used: mcp.namesOf(tools), skills: skills.names(a), modelUsed: pick.model, modelFrom: pick.from, modelId: ran, effortUsed: eff.effort || '', effortFrom: eff.from };
 }
@@ -274,7 +439,7 @@ async function runTeam(task, mode) {
   // 1. the plan — the lead splits the request across the desks (Sonnet, no tools: a JSON job)
   const pp = teams.planPrompt({ business: cfg.name, deptName: DEPTS[dept].name, lead, seats, text: task.text, title: task.title, max, notes: contextText(index, relevantNotes(index, dept, task.title + ' ' + task.text, 3)).slice(0, 4000) });
   let plan;
-  try { plan = teams.parsePlan(await ask(pp.system, pp.user, { maxTokens: 1400, timeout: 150000, model: 'sonnet' }), { seats, lead, max, fallback: task }); }
+  try { plan = teams.parsePlan(await ask(pp.system, pp.user, { maxTokens: 1400, timeout: 150000, model: 'sonnet', dept }), { seats, lead, max, fallback: task }); }
   catch (e) { plan = { pieces: [{ agent: lead.id, title: task.title, text: task.text }], why: '', solo: true, error: e.message }; }
   task.team = { ...(task.team || {}), lead: lead.id, max, pieces: plan.pieces.map(p => ({ ...p, state: 'next' })), messages: [], why: plan.why, solo: plan.solo, plannedAt: Date.now() };
   persist(task);
@@ -289,7 +454,7 @@ async function runTeam(task, mode) {
       const system = agentSystem(a, index, read, { extra: teams.teamSection({ me: a, lead, pieces: task.team.pieces, nameOf }), words: 220 });
       const user = `Task (the whole request, for context): ${task.title}\nOwner's request: ${task.text}\n\nYOUR PIECE: ${piece.title}\n${piece.text}` + routineLineFor(task) + (mode === 'draft' ? modeLineFor('draft', task) : '');
       const { pick, eff } = pickFor(task, a);
-      const { text, tools, modelId: ran } = await askX(system, user, { model: pick.model, effort: eff.effort });
+      const { text, tools, modelId: ran } = await askX(system, user, { model: pick.model, effort: eff.effort, dept, agent: a });
       const { body, messages } = teams.parseMessages(text, ids);
       Object.assign(piece, { result: body || '(empty)', tools: toolKeys(tools), used: mcp.namesOf(tools), read, modelId: ran, error: !text });
       for (const m of messages) task.team.messages.push({ from: a.id, to: m.to === lead.id ? 'lead' : m.to, text: m.text, at: Date.now() });
@@ -308,7 +473,7 @@ async function runTeamLead(task, feedback, mode) {
   const system = agentSystem(lead, index, read, { extra: `TEAM\nYou lead this team. The pieces below were done by your teammates (one of them may be yours). You write the finished deliverable from them.`, words: 450 });
   const user = teams.synthPrompt({ task, pieces: tm.pieces || [], messages: tm.messages || [], nameOf, feedback: mode === 'approve' ? null : feedback }) + routineLineFor(task) + modeLineFor(mode, task);
   const { pick, eff } = pickFor(task, lead);
-  const { text, tools, modelId: ran } = await askX(system, user, { model: pick.model, effort: eff.effort, maxTokens: 6000 });
+  const { text, tools, modelId: ran } = await askX(system, user, { model: pick.model, effort: eff.effort, maxTokens: 6000, dept: lead.department, agent: lead });
   if (!text) throw new Error('Claude returned nothing');
   const allTools = [...new Set([...(tm.pieces || []).flatMap(p => p.tools || []), ...toolKeys(tools)])];
   const allUsed = [...new Set([...(tm.pieces || []).flatMap(p => p.used || []), ...mcp.namesOf(tools)])];
@@ -322,6 +487,8 @@ function writeNote(task) { // the deliverable becomes a note in the brain, linke
   const body = `---\nagent: ${a.name}\ndepartment: ${DEPTS[a.department].name}\ntask: ${task.id}\ndone: ${new Date(task.doneAt).toISOString()}${task.used?.length ? '\ntools: ' + task.used.join(', ') : ''}${task.skills?.length ? '\nskills: ' + task.skills.join(', ') : ''}${task.routine ? '\nroutine: ' + task.when + (task.late ? ' (late)' : '') : ''}${task.modelUsed ? '\nmodel: ' + modelName(task.modelUsed) + (task.modelFrom && task.modelFrom !== 'office' ? ' (' + task.modelFrom + ')' : '') : ''}${task.effortUsed ? '\neffort: ' + task.effortUsed + (task.effortFrom && task.effortFrom !== 'model' ? ' (' + task.effortFrom + ')' : '') : ''}${task.approved ? '\napproved: ' + new Date(task.approvedAt).toISOString() : ''}${task.team?.pieces?.length ? '\nteam: ' + task.team.pieces.map(p => nameOf(p.agent)).join(', ') : ''}\n---\n` +
     `# ${task.title}\n\n${task.result}\n\n---\nRead: ${(task.read || []).map(n => `[[${n}]]`).join(' · ') || '—'}\n` + teams.noteExtra(task.team, nameOf);
   fs.writeFileSync(path.join(NOTES_DIR, name + '.md'), body);
+  const cat = task.dept === 'fin' ? 'invoice' : task.dept === 'delivery' ? 'report' : task.dept === 'sales' ? 'proposal' : task.dept === 'marketing' ? 'insight' : 'deliverable';
+  saveNote({ title: task.title, category: cat, content: task.result || '', author_agent: a ? a.name : '', user_id: task.user_id || null }).catch(() => {});
   return name;
 }
 async function chat(agentId, text, history) {
@@ -335,7 +502,7 @@ async function chat(agentId, text, history) {
     'Use the company notes; say when something is not in them. If the owner asks you to look something up, use your tools. Nothing outbound is sent without the owner\'s explicit say-so.\n\n' +
     `${mcp.promptText(a.tools)}\n\nCOMPANY NOTES\n${businessContext(index)}\n\nRELEVANT NOTES\n${contextText(index, read)}\n\nYOUR RECENT TASKS\n${mine || '—'}`;
   const convo = (history || []).slice(-8).map(m => `${m.who === 'user' ? 'Owner' : a.name}: ${m.text}`).join('\n');
-  const { text: reply, tools } = await askX(system, (convo ? convo + '\n' : '') + `Owner: ${text}\n${a.name}:`, { maxTokens: 1200, model: modelFor({ agent: a.model, office: cfg.model }).model, effort: effortFor({ agent: a.effort, office: cfg.effort, model: modelFor({ agent: a.model, office: cfg.model }).model }).effort });
+  const { text: reply, tools } = await askX(system, (convo ? convo + '\n' : '') + `Owner: ${text}\n${a.name}:`, { maxTokens: 1200, model: modelFor({ agent: a.model, office: cfg.model }).model, effort: effortFor({ agent: a.effort, office: cfg.effort, model: modelFor({ agent: a.model, office: cfg.model }).model }).effort, dept: a.department, agent: a });
   return { reply, read, tools: toolKeys(tools), used: mcp.namesOf(tools) };
 }
 
@@ -356,8 +523,9 @@ const agentName = id => AGENTS.find(a => a.id === id)?.name || id;
 let queue = Promise.resolve();
 const enqueue = fn => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
 function fire(r, { due = Date.now(), late = false, by = 'routine' } = {}) { // the routine becomes a task and runs here, page or no page
-  const task = { id: nid(), dept: r.dept, agent: r.agent, title: r.title, text: r.text, plan: r.plan || [], eta: 15, why: '', state: 'next', addedAt: Date.now(), by, routine: r.id, when: r.desc || describe(r.when), needsOk: r.needsOk, due, late, routineModel: r.model || undefined, routineEffort: r.effort || undefined, team: r.team && TEAMS.enabled ? { lead: r.agent, asked: 'routine' } : undefined };
+  const task = { id: nid(), dept: r.dept, agent: r.agent, title: r.title, text: r.text, plan: r.plan || [], eta: 15, why: '', state: 'next', addedAt: Date.now(), by, routine: r.id, when: r.desc || describe(r.when), needsOk: r.needsOk, due, late, routineModel: r.model || undefined, routineEffort: r.effort || undefined, team: r.team && TEAMS.enabled ? { lead: r.agent, asked: 'routine' } : undefined, user_id: r.user_id || undefined };
   const list = load(); list.push(task); save(list);
+  upsertTask(task).catch(() => {});
   routines.advance(RSTATE, r, Date.now(), task.id, late); routines.saveState(DATA, RSTATE);
   console.log(`⏱ ${task.id} → ${task.agent}: ${task.title}${late ? ' (LATE · was due ' + new Date(due).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')' : ''}`);
   enqueue(() => runServerTask(task.id));
@@ -366,6 +534,7 @@ function fire(r, { due = Date.now(), late = false, by = 'routine' } = {}) { // t
 async function runServerTask(id, { feedback, approve } = {}) {
   let list = load(); const task = list.find(t => t.id === id); if (!task) return null;
   task.state = 'doing'; task.startedAt = Date.now(); delete task.ask; save(list);
+  upsertTask(task).catch(() => {});
   try {
     const out = await run(task, feedback, approve ? 'approve' : task.needsOk ? 'draft' : 'routine');
     if (approve) { task.result = (task.draft || task.result) + '\n\n---\nAFTER YOUR OK\n' + out.result; task.approved = true; task.approvedAt = Date.now(); }
@@ -377,6 +546,7 @@ async function runServerTask(id, { feedback, approve } = {}) {
     Object.assign(task, { state: 'done', doneAt: Date.now(), result: 'Could not complete this task: ' + e.message, error: true });
   }
   list = load(); const i = list.findIndex(t => t.id === task.id); if (i >= 0) list[i] = task; save(list);
+  upsertTask(task).catch(() => {});
   console.log(`${task.error ? '✗' : task.state === 'waiting' ? '⏸' : '✓'} ${task.id} ${task.error ? 'failed' : task.state === 'waiting' ? 'waiting for your OK' : 'done'} (${task.result.length} chars${task.tools?.length ? ', tools: ' + task.tools.join(' ') : ''}${task.note ? ', note: ' + task.note : ''})`);
   return task;
 }
@@ -463,53 +633,303 @@ const server = http.createServer(async (req, res) => {
       return res.end(url.pathname === '/dark' ? page.replace('<body>', '<body class="dark">') : page); // /dark: the same file, opened in dark mode
     }
     if (url.pathname === '/api/health') return json(res, 200, { ok: true, version, backend, model: cfg.model, modelName: modelName(cfg.model), models: MODEL_KEYS, effort: cfg.effort || '', efforts: EFFORT_KEYS, name: cfg.name, brain: BRAIN, notes: graph.notes, depts: DEPT_KEYS,
-      agents: agentsOut(), setup: setupMap(), routines: (l => ({ count: l.length, paused: l.filter(r => r.paused).length, depts: routines.ALLOWED }))(loadRoutines()), roster: { customised: roster.customised, briefed: roster.briefed, files: roster.files, problems: roster.problems }, skills: (({ count, shipped, brain, problems }) => ({ count, shipped, brain, problems }))(skills.summary()), tools: backend === 'claude-cli', mcp: mcp.summary(), teams: TEAMS, browser: mcp.summary().browser });
+      agents: agentsOut(), setup: setupMap(), routines: (l => ({ count: l.length, paused: l.filter(r => r.paused).length, depts: routines.ALLOWED }))(loadRoutines()), roster: { customised: roster.customised, briefed: roster.briefed, files: roster.files, problems: roster.problems }, skills: (({ count, shipped, brain, problems }) => ({ count, shipped, brain, problems }))(skills.summary()), tools: backend === 'claude-cli' || backend === 'openrouter', mcp: mcp.summary(), teams: TEAMS, browser: mcp.summary().browser });
     if (url.pathname === '/api/agents') return json(res, 200, { agents: agentsOut(), problems: roster.problems, files: roster.files });
     if (url.pathname === '/api/skills') return json(res, 200, refreshSkills().summary()); // reloads from disk: edit a skill, hit this, see it
     if (url.pathname === '/api/lessons') return json(res, 200, { dir: learn.dir(BRAIN), agents: AGENTS.map(a => ({ id: a.id, name: a.name, ...learn.read(BRAIN, a.id) })).filter(x => x.rules.length || x.oneOffs.length) });
-    if (url.pathname === '/api/mcp') { if (url.searchParams.get('refresh') === '1') await mcp.discover(); else await discovering; return json(res, 200, { ...mcp.summary(), tools: backend === 'claude-cli' }); }
+    if (url.pathname === '/api/mcp') { if (url.searchParams.get('refresh') === '1') await mcp.discover(); else await discovering; return json(res, 200, { ...mcp.summary(), tools: backend === 'claude-cli' || backend === 'openrouter' }); }
     if (url.pathname === '/api/brain') return json(res, 200, graph);
     if (url.pathname === '/api/usage') return json(res, 200, await getUsage(url.searchParams.get('refresh') === '1')); // V3.6: the plan's gauge (never a 500: unavailable is an answer)
-    if (url.pathname === '/api/tasks' && req.method === 'GET') return json(res, 200, load());
+    if (url.pathname === '/api/tasks' && req.method === 'GET') {
+      const uid = url.searchParams.get('user_id');
+      const dbTasks = await getTasks(uid || null);
+      if (Array.isArray(dbTasks)) {
+        save(dbTasks);
+        return json(res, 200, dbTasks);
+      }
+      return json(res, 200, load());
+    }
+    if (url.pathname === '/api/stats' && req.method === 'GET') {
+      const uid = url.searchParams.get('user_id') || null;
+      try {
+        const { getRealStats } = await import('./supabase.mjs?t=' + Date.now());
+        const s = await getRealStats(uid);
+        return json(res, 200, s || {});
+      } catch {
+        return json(res, 200, {});
+      }
+    }
+    if (url.pathname === '/api/notes' && req.method === 'GET') {
+      const uid = url.searchParams.get('user_id') || null;
+      return json(res, 200, await getNotes(uid));
+    }
+    if (url.pathname === '/api/clients' && req.method === 'GET') {
+      const uid = url.searchParams.get('user_id') || null;
+      return json(res, 200, await getClients(uid));
+    }
+    if (url.pathname === '/api/clients' && req.method === 'POST') {
+      const b = await body(req);
+      const ok = await addClient(b);
+      return json(res, ok ? 200 : 400, { ok });
+    }
     if (url.pathname === '/api/routines' && req.method === 'GET') return json(res, 200, routinesOut());
     if (url.pathname === '/api/routines' && req.method === 'POST') {
       const b = await body(req);
       if (!DEPTS[b.dept] || b.dept === 'brain') return json(res, 400, { error: 'unknown department' });
       if (!routines.ALLOWED.includes(b.dept)) return json(res, 400, { error: routines.refusal(b.dept), refused: true });
       const r = await makeRoutine({ dept: b.dept, text: b.text, when: b.when, agent: b.agent, needsOk: b.needsOk, model: b.model, effort: b.effort });
+      if (r && r.routine) upsertRoutine(r.routine, b.user_id || null).catch(() => {});
       return json(res, r.error ? 400 : 200, r);
     }
     const rm = url.pathname.match(/^\/api\/routines\/([^/]+)(?:\/(run|pause|resume))?$/);
     if (rm) {
       const r = loadRoutines().find(x => x.id === rm[1]);
       if (!r) return json(res, 404, { error: 'no such routine' });
-      if (req.method === 'DELETE') { removeRoutine(r.id); return json(res, 200, { ok: true, routines: loadRoutines() }); }
+      if (req.method === 'DELETE') { removeRoutine(r.id); deleteRoutine(r.id).catch(() => {}); return json(res, 200, { ok: true, routines: loadRoutines() }); }
       if (req.method !== 'POST') return json(res, 405, { error: 'POST or DELETE' });
       if (rm[2] === 'run') return json(res, 200, { ok: true, task: fire(r, { by: 'you' }), routines: loadRoutines() });
-      if (rm[2] === 'pause' || rm[2] === 'resume') { editRoutine(r.id, { paused: rm[2] === 'pause' }); return json(res, 200, { ok: true, routines: loadRoutines() }); }
+      if (rm[2] === 'pause' || rm[2] === 'resume') { editRoutine(r.id, { paused: rm[2] === 'pause' }); upsertRoutine({ ...r, paused: rm[2] === 'pause' }).catch(() => {}); return json(res, 200, { ok: true, routines: loadRoutines() }); }
       const b = await body(req); const patch = {};
       if (typeof b.needsOk === 'boolean') patch.needsOk = b.needsOk; if (typeof b.paused === 'boolean') patch.paused = b.paused;
       if (typeof b.text === 'string' && b.text.trim()) patch.text = b.text.trim(); if (typeof b.title === 'string' && b.title.trim()) patch.title = b.title.trim().slice(0, 90);
       if (b.when && validWhen(b.when)) patch.when = b.when;
       if (b.model !== undefined) patch.model = normModel(b.model) || '';
       if (b.effort !== undefined) patch.effort = normEffort(b.effort) || '';
-      editRoutine(r.id, patch); return json(res, 200, { ok: true, routines: loadRoutines() });
+      const updatedR = editRoutine(r.id, patch);
+      if (updatedR) upsertRoutine(updatedR, b.user_id || null).catch(() => {});
+      return json(res, 200, { ok: true, routines: loadRoutines() });
     }
     if (url.pathname === '/api/tasks' && req.method === 'POST') {
-      const { dept, text, model, effort, team, at } = await body(req);
+      const { dept, text, model, effort, team, at, user_id } = await body(req);
       if (!DEPTS[dept] || dept === 'brain') return json(res, 400, { error: 'unknown department' });
       if (!text || !String(text).trim()) return json(res, 400, { error: 'empty task' });
       const dueAt = at ? (typeof at === 'number' ? at : Date.parse(at)) : null; // V3.2.1: a task for a date
       if (at && !(dueAt > 0)) return json(res, 400, { error: 'at must be a time (ms or ISO)' });
       if (dueAt && dueAt < Date.now() - 60000) return json(res, 400, { error: 'that time has passed — pick one that is still ahead' });
+
+      if (dept === 'ceo') {
+        // Executive Command Delegation: CEO analyzes the mandate and dispatches to departments
+        const low = String(text).toLowerCase();
+        let targetDepts = [];
+        if (/market|post|reel|ad|campaign|social|content/i.test(low)) targetDepts.push('marketing');
+        if (/operat|ops|complian|legal|sop|report|board|system/i.test(low)) targetDepts.push('ops');
+        if (/email|inbox|reply|mail/i.test(low)) targetDepts.push('emails');
+        if (/sale|lead|prospect|deal|pipeline/i.test(low)) targetDepts.push('sales');
+        if (/financ|invoic|bill|pay|reconcil/i.test(low)) targetDepts.push('fin');
+        if (/deliver|qa|asset|client report/i.test(low)) targetDepts.push('delivery');
+        if (!targetDepts.length) targetDepts = ['ops', 'marketing']; // Default cross-department delegation
+
+        const ceoTask = {
+          id: nid(),
+          dept: 'ceo',
+          agent: 'ceo_lead',
+          title: String(text).trim().slice(0, 90),
+          text: String(text).trim(),
+          plan: ['Triage executive directive', 'Dispatch sub-operations to department leads', 'Track execution across pods', 'Compile master company report'],
+          why: `Executive Command: dispatched sub-operations to ${targetDepts.map(d => DEPTS[d]?.name || d).join(' & ')}`,
+          state: 'next',
+          addedAt: Date.now(),
+          by: 'you',
+          user_id: user_id || undefined,
+          model: normModel(model) || undefined,
+          effort: normEffort(effort) || undefined,
+          delegated: []
+        };
+
+        const list = load();
+        list.push(ceoTask);
+
+        // Create delegated child tasks in target departments
+        for (const td of targetDepts) {
+          const leadAgent = leadOf(td);
+          const childTitle = `${ceoTask.title} (${DEPTS[td]?.short || td} Directive)`;
+          const childTask = {
+            id: nid(),
+            dept: td,
+            agent: leadAgent.id,
+            title: childTitle,
+            text: `[Delegated from Head Table]: ${ceoTask.text}`,
+            plan: [`Execute ${DEPTS[td]?.name} piece`, 'Conduct QA & review', 'Submit deliverable to Head Table'],
+            why: `Delegated by Chief Executive from Head Table`,
+            state: 'next',
+            addedAt: Date.now(),
+            by: 'ceo',
+            parent: ceoTask.id,
+            user_id: user_id || undefined
+          };
+          list.push(childTask);
+          ceoTask.delegated.push({ id: childTask.id, dept: td, agent: leadAgent.id, title: childTitle, text: childTask.text });
+          upsertTask(childTask, user_id).catch(() => {});
+          console.log(`+ Delegated ${childTask.id} → ${childTask.agent} (${td}): ${childTitle}`);
+        }
+
+        save(list);
+        upsertTask(ceoTask, user_id).catch(() => {});
+
+        // Save initial executive briefing note in Supabase
+        saveNote({
+          title: `Executive Briefing: ${ceoTask.title}`,
+          content: `# Executive Mandate Briefing\n\n**Directive:** ${ceoTask.text}\n**Orchestration Lead:** Chief Executive & Head Table\n**Target Departments:** ${targetDepts.map(d => DEPTS[d]?.name || d).join(', ')}\n\n## Sub-Operations Dispatched\n${ceoTask.delegated.map(d => `- **${DEPTS[d.dept]?.name || d.dept}**: ${d.title}`).join('\n')}\n\n*Status: Active cross-departmental execution monitored in real time.*`,
+          category: 'executive',
+          department: 'ceo',
+          user_id: user_id || undefined
+        }).catch(() => {});
+
+        console.log(`+ CEO DIRECTIVE ${ceoTask.id}: Dispatched to ${targetDepts.join(', ')}`);
+        return json(res, 200, ceoTask);
+      }
+
       const r = await route(dept, String(text).trim());
       const asTeam = TEAMS.enabled && (team === true || teams.intent(text)); // V3.2 (16 Sep): TEAM in the bar, or "as a team" in the sentence → the lead owns it and splits it
-      const task = { id: nid(), dept, agent: asTeam ? leadOf(dept).id : r.agent, title: r.title, text: String(text).trim(), plan: r.plan, eta: r.eta, why: asTeam ? `team — ${leadOf(dept).name} splits it across the desks` : r.why, state: 'next', addedAt: Date.now(), by: 'you', model: normModel(model) || undefined, effort: normEffort(effort) || undefined, // model/effort: set on this task (beats routine, agent, office)
+      const task = { id: nid(), dept, agent: asTeam ? leadOf(dept).id : r.agent, title: r.title, text: String(text).trim(), plan: r.plan, eta: r.eta, why: asTeam ? `team — ${leadOf(dept).name} splits it across the desks` : r.why, state: 'next', addedAt: Date.now(), by: 'you', user_id: user_id || undefined, model: normModel(model) || undefined, effort: normEffort(effort) || undefined, // model/effort: set on this task (beats routine, agent, office)
         team: asTeam ? { lead: leadOf(dept).id, asked: team === true ? 'you' : 'text' } : undefined };
       if (dueAt) { task.state = 'scheduled'; task.dueAt = dueAt; task.needsOk = r.needsOk; } // waits for its minute; needsOk decides whether it then waits for the OK
       const list = load(); list.push(task); save(list);
+      upsertTask(task, user_id).catch(() => {});
       console.log(`+ ${task.id} → ${task.agent}: ${task.title}${asTeam ? ' (team)' : ''}${dueAt ? ' · scheduled ' + untilText(dueAt) : ''}`);
       return json(res, 200, task);
+    }
+    if (url.pathname === '/api/auth/signup' && req.method === 'POST') {
+      const b = await body(req);
+      const resAuth = await authSignUp(b);
+      return json(res, resAuth.error ? 400 : 200, resAuth);
+    }
+    if (url.pathname === '/api/auth/signin' && req.method === 'POST') {
+      const b = await body(req);
+      const resAuth = await authSignIn(b);
+      return json(res, resAuth.error ? 400 : 200, resAuth);
+    }
+    if (url.pathname === '/api/auth/profile' && req.method === 'GET') {
+      const uid = url.searchParams.get('id');
+      if (!uid) return json(res, 400, { error: 'user id required' });
+      const prof = await getProfile(uid);
+      return json(res, 200, prof || { id: uid });
+    }
+    if (url.pathname === '/api/config/settings' && req.method === 'GET') {
+      const localPath = path.join(ROOT, 'office.config.local.json');
+      let localData = {};
+      try { localData = JSON.parse(fs.readFileSync(localPath, 'utf8')); } catch {}
+      const activeKey = localData.openrouterApiKey !== undefined ? localData.openrouterApiKey : (cfg.openrouterApiKey || process.env.OPENROUTER_API_KEY || '');
+      const activeModel = localData.openrouterModel || cfg.openrouterModel || process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet';
+      return json(res, 200, {
+        ok: true,
+        backend,
+        openrouterApiKey: activeKey,
+        openrouterModel: activeModel,
+        models: {
+          default: localData.models?.default || cfg.models?.default || activeModel,
+          departments: {
+            ceo: ['anthropic/claude-3.7-sonnet', 'openai/gpt-4o'],
+            emails: ['anthropic/claude-3.5-haiku', 'google/gemini-2.5-flash'],
+            marketing: ['anthropic/claude-3.7-sonnet', 'openai/gpt-4o'],
+            sales: ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o'],
+            ops: ['deepseek/deepseek-chat', 'openai/gpt-4o'],
+            fin: ['anthropic/claude-3.7-sonnet', 'openai/gpt-4o'],
+            delivery: ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o'],
+            ...(cfg.models?.departments || {}),
+            ...(localData.models?.departments || {})
+          },
+          fallbacks: localData.models?.fallbacks || cfg.models?.fallbacks || [
+            'anthropic/claude-3.5-sonnet',
+            'openai/gpt-4o',
+            'google/gemini-2.5-pro',
+            'deepseek/deepseek-chat'
+          ]
+        },
+        plugins: localData.plugins || {
+          gmail: { enabled: false, status: 'disconnected', account: '' },
+          google_calendar: { enabled: false, status: 'disconnected', account: '' },
+          meta: { enabled: false, status: 'disconnected', account: '' },
+          twitter: { enabled: false, status: 'disconnected', account: '' },
+          slack: { enabled: false, status: 'disconnected', account: '' },
+          supabase: { enabled: true, status: 'connected', account: 'fhjjwcdooeddsowaqqpw' },
+          browser: { enabled: false, status: 'disconnected', account: '' },
+          web: { enabled: false, status: 'disconnected', account: '' }
+        }
+      });
+    }
+    if (url.pathname === '/api/config/settings' && req.method === 'POST') {
+      const b = await body(req);
+      const localPath = path.join(ROOT, 'office.config.local.json');
+      let localData = {};
+      try { localData = JSON.parse(fs.readFileSync(localPath, 'utf8')); } catch {}
+
+      if (b.openrouterApiKey !== undefined) {
+        const cleanedKey = String(b.openrouterApiKey).trim();
+        localData.openrouterApiKey = cleanedKey;
+        cfg.openrouterApiKey = cleanedKey;
+        process.env.OPENROUTER_API_KEY = cleanedKey;
+        if (cleanedKey) {
+          backend = 'openrouter';
+          if (!openrouter) {
+            openrouter = {
+              apiKey: cleanedKey,
+              baseURL: cfg.openrouterBaseUrl || process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+              defaultModel: cfg.openrouterModel || process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet'
+            };
+          } else {
+            openrouter.apiKey = cleanedKey;
+          }
+        } else {
+          if (openrouter) openrouter.apiKey = '';
+          if (!process.env.ANTHROPIC_API_KEY) backend = 'claude-cli';
+        }
+      }
+      if (b.openrouterModel !== undefined) {
+        const cleanedModel = String(b.openrouterModel).trim();
+        localData.openrouterModel = cleanedModel;
+        cfg.openrouterModel = cleanedModel;
+        process.env.OPENROUTER_MODEL = cleanedModel;
+        if (openrouter) openrouter.defaultModel = cleanedModel;
+      }
+      if (b.models && typeof b.models === 'object') {
+        localData.models = { ...(localData.models || {}), ...b.models };
+        cfg.models = { ...(cfg.models || {}), ...b.models };
+      }
+      if (b.plugins && typeof b.plugins === 'object') {
+        localData.plugins = { ...(localData.plugins || {}), ...b.plugins };
+        if (b.plugins.browser !== undefined && typeof b.plugins.browser.enabled === 'boolean') {
+          cfg.tools = cfg.tools || {};
+          cfg.tools.browser = b.plugins.browser.enabled;
+        }
+        if (b.plugins.web !== undefined && typeof b.plugins.web.enabled === 'boolean') {
+          cfg.tools = cfg.tools || {};
+          cfg.tools.web = b.plugins.web.enabled;
+        }
+      }
+
+      fs.writeFileSync(localPath, JSON.stringify(localData, null, 2), 'utf8');
+      console.log(`★ Settings updated & persisted to office.config.local.json (OpenRouter key: ${localData.openrouterApiKey ? localData.openrouterApiKey.slice(0, 10) + '...' : 'none'}, backend: ${backend})`);
+      return json(res, 200, { ok: true, settings: localData, backend });
+    }
+    if (url.pathname === '/api/config/test-openrouter' && req.method === 'POST') {
+      const b = await body(req);
+      const testKey = (b.apiKey || cfg.openrouterApiKey || (openrouter && openrouter.apiKey) || '').trim();
+      if (!testKey) return json(res, 400, { ok: false, error: 'No API key provided' });
+      try {
+        const authRes = await fetch('https://openrouter.ai/api/v1/auth/key', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${testKey}`
+          }
+        });
+        if (!authRes.ok) {
+          const errTxt = await authRes.text();
+          let parsedErr = errTxt;
+          try { const ej = JSON.parse(errTxt); parsedErr = ej.error?.message || errTxt; } catch {}
+          return json(res, 200, { ok: false, error: parsedErr });
+        }
+        const authData = await authRes.json();
+        return json(res, 200, {
+          ok: true,
+          label: authData.data?.label || 'Active Key',
+          usage: authData.data?.usage || 0,
+          limit: authData.data?.limit,
+          is_free_tier: authData.data?.is_free_tier
+        });
+      } catch (e) {
+        return json(res, 200, { ok: false, error: e.message });
+      }
     }
     const m = url.pathname.match(/^\/api\/tasks\/([^/]+)(?:\/(run|revise|approve|reject))?$/);
     if (m && req.method === 'POST' && (m[2] === 'approve' || m[2] === 'reject')) { // D1: the owner's tick on a routine's draft
@@ -529,6 +949,7 @@ const server = http.createServer(async (req, res) => {
       if (!task) return json(res, 404, { error: 'no such task' });
       const { feedback } = m[2] === 'revise' ? await body(req) : {};
       task.state = 'doing'; task.startedAt = Date.now(); save(list);
+      upsertTask(task).catch(() => {});
       try {
         const { result, read, tools, used, skills: sk, modelUsed, modelFrom, modelId: ran, effortUsed, effortFrom, team } = await run(task, feedback);
         Object.assign(task, { state: 'done', doneAt: Date.now(), result, read, tools, used, skills: sk, error: false, modelUsed, modelFrom, modelId: ran, effortUsed, effortFrom, ...(team ? { team } : {}) });
@@ -538,6 +959,7 @@ const server = http.createServer(async (req, res) => {
         Object.assign(task, { state: 'done', doneAt: Date.now(), result: 'Could not complete this task: ' + e.message, error: true });
       }
       const l2 = load(); const i = l2.findIndex(t => t.id === task.id); if (i >= 0) l2[i] = task; save(l2);
+      upsertTask(task).catch(() => {});
       console.log(`${task.error ? '✗' : '✓'} ${task.id} ${task.error ? 'failed' : 'done'} (${task.result.length} chars${task.tools?.length ? ', tools: ' + task.tools.join(' ') : ''}${task.note ? ', note: ' + task.note : ''})`);
       json(res, 200, task);
       if (feedback && !task.error) { // learn from the correction, after the reply is out the door
@@ -547,7 +969,11 @@ const server = http.createServer(async (req, res) => {
       }
       return;
     }
-    if (m && req.method === 'DELETE') { save(load().filter(t => t.id !== m[1])); return json(res, 200, { ok: true }); }
+    if (m && req.method === 'DELETE') {
+      save(load().filter(t => t.id !== m[1]));
+      deleteTask(m[1]).catch(() => {});
+      return json(res, 200, { ok: true });
+    }
     if (url.pathname === '/api/chat' && req.method === 'POST') {
       const { agent, text, history } = await body(req);
       if (!text || !String(text).trim()) return json(res, 400, { error: 'empty message' });
@@ -569,14 +995,15 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { console.error(e); json(res, 500, { error: e.message }); }
 });
 server.listen(cfg.port, () => {
-  console.log(`Agents Office ${version} → http://localhost:${cfg.port}`);
-  console.log(`  business: ${cfg.name}   brain: ${BRAIN} (${graph.notes} notes, ${graph.links.length} links)   claude: ${backend} · ${modelName(cfg.model)}${cfg.effort ? ' · effort ' + cfg.effort : ''} by default (routing on Sonnet)`);
+  console.log(`Blackpeak Office ${version} → http://localhost:${cfg.port}`);
+  console.log(`  business: ${cfg.name}   brain: ${BRAIN} (${graph.notes} notes, ${graph.links.length} links)   llm: ${backend} · ${backend === 'openrouter' ? openrouter.defaultModel : modelName(cfg.model)}${cfg.effort ? ' · effort ' + cfg.effort : ''} by default`);
+  testConnection().then(ok => { if (ok) console.log('  supabase: connected to "my office" (public.office_tasks, public.office_notes, public.office_clients)'); }).catch(() => {});
   getUsage(true).then(u => console.log(u.source === 'claude' ? `  usage: session ${u.session?.percent ?? '—'}% · week ${u.week?.percent ?? '—'}% (your Claude plan, as Claude Code shows it)` : `  usage: Claude's gauge unavailable (${u.reason}) — showing the office's own count`)).catch(() => {});
   console.log(`  tasks: ${FILE}   notes the agents write: ${NOTES_DIR}`);
   const rl = loadRoutines(); const nx = rl.filter(r => !r.paused && r.nextAt).sort((a, b) => a.nextAt - b.nextAt)[0];
   console.log(`  routines: ${rl.length} loaded${rl.some(r => r.paused) ? ' (' + rl.filter(r => r.paused).length + ' paused)' : ''}${nx ? ' · next ' + untilText(nx.nextAt) + ' ' + nx.title.toUpperCase() + ' (' + nx.agent + ')' : ''} · ${rlist.path}`);
   setInterval(tickRoutines, 20000); tickRoutines(); // the clock: every 20 s; the first tick catches up anything missed while the office was off (once, marked LATE)
-  console.log(`  agents: 35 (${roster.customised} customised${roster.briefed ? ', ' + roster.briefed + ' briefed' : ''}${roster.files.length ? ' via ' + roster.files.join(' + ') : ''})   tools: ${backend === 'claude-cli' ? 'connected MCP servers' + (cfg.tools?.web === false ? '' : ' + web') + (mcp.browserOn() ? ' + the owner\'s Chrome (' + (mcp.browserState().installed ? 'extension paired' + (mcp.browserState().device ? ': ' + mcp.browserState().device : '') : 'extension NOT paired — run `claude --chrome` once') + ')' : '') : 'none on the API backend'}`);
+  console.log(`  agents: 35 (${roster.customised} customised${roster.briefed ? ', ' + roster.briefed + ' briefed' : ''}${roster.files.length ? ' via ' + roster.files.join(' + ') : ''})   tools: ${backend === 'claude-cli' || backend === 'openrouter' ? 'connected MCP servers' + (cfg.tools?.web === false ? '' : ' + web') + (mcp.browserOn() ? ' + Chrome' : '') : 'none on the API backend'}`);
   console.log(`  teams: ${TEAMS.enabled ? 'on — TEAM in the bar or "as a team" in the sentence; the lead splits it across up to ' + TEAMS.max + ' desks' : 'off (teams.enabled in office.config.json)'}`);
   const sk = skills.summary(); const setup = setupMap(); const notYet = DEPT_KEYS.filter(k => !setup[k]);
   console.log(`  skills: ${sk.count} (${sk.shipped} shipped in skills/, ${sk.brain} in ${path.join(NOTES_DIR, 'skills')})${sk.problems.length ? '   ⚠ ' + sk.problems.length + ' problem' + (sk.problems.length > 1 ? 's' : '') + ' — see npm run check' : ''}`);

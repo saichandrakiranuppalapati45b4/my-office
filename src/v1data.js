@@ -17,14 +17,51 @@ export const person = () => rnd(P.first)+' '+rnd(P.last);
 export const money = n => '$'+n.toLocaleString('en-NZ');
 /* ---------- KPIs ---------- */
 export const KPIS = [
-  { id:'leads',     label:'Leads Enriched',  val:47,   fmt:v=>v },
-  { id:'callhrs',   label:'Call Hrs Routed', val:9.5,  fmt:v=>v.toFixed(1)+'h' },
-  { id:'tickets',   label:'Tickets Resolved',val:31,   fmt:v=>v },
-  { id:'adspend',   label:'Ad Spend Today',  val:684,  fmt:v=>money(Math.round(v)) },
-  { id:'proposals', label:'Proposals Sent',  val:6,    fmt:v=>v },
-  { id:'invoices',  label:'Invoices Issued', val:23,  fmt:v=>v },
+  { id:'leads',     label:'Leads Enriched',  val:0,   fmt:v=>v },
+  { id:'callhrs',   label:'Call Hrs Routed', val:0,  fmt:v=>v.toFixed(1)+'h' },
+  { id:'tickets',   label:'Tickets Resolved',val:0,   fmt:v=>v },
+  { id:'adspend',   label:'Ad Spend Today',  val:0,  fmt:v=>money(Math.round(v)) },
+  { id:'proposals', label:'Proposals Sent',  val:0,    fmt:v=>v },
+  { id:'invoices',  label:'Invoices Issued', val:0,  fmt:v=>v },
 ];
 export const V1 = [
+/* ============ HEAD TABLE / CEO ============ */
+{ id:'ceo_lead', name:'CHIEF EXECUTIVE', dept:'ceo', desk:[0,0], sit:[0,0], hair:'#1A1A1A', shirt:'#4F46E5', lead:true,
+  role:'Chief Executive Officer & Orchestrator',
+  tagline:'Commands the executive office, triages owner directives, and oversees cross-departmental execution.',
+  tasks:['Reviewing multi-department roadmap','Synthesizing executive briefing for the owner','Dispatching operational directives to Operations and Marketing','Auditing company-wide KPIs across all 6 departments'],
+  ev:[
+    {i:'👑', t:()=>`Executive brief compiled for owner — cross-departmental progress synchronized across all pods`, p:3},
+    {i:'📋', t:()=>`Dispatched operational directive to Operations and Marketing leads`, p:3},
+  ],
+  stats:[['Directives issued','0'],['Reports in','0'],['Cross-dept SLA','100%'],['Active pods','7 / 7']],
+  chartLbl:'Executive directives — last 7 days', chart:[12,15,14,18,16,19,21],
+  greeting:`Welcome. I am the Chief Executive. Issue any high-level command or objective here, and my executive team will dispatch it to the appropriate departments, monitor execution, and deliver the final report.`,
+  chat:[
+    {k:['operations','ops','marketing','delegate','how do you'], r:[`When you give a command to the Head Table, we triage the work: marketing tasks go directly to the Marketing team for content and posting; operational directives go to Operations for compliance, review and execution. My assistants walk the deliverables to each pod and synthesize the final report for you.`]},
+  ],
+  chips:['Deploy operational directive','Marketing push overview','Synthesize executive company report']
+},
+{ id:'cos', name:'CHIEF OF STAFF', dept:'ceo', desk:[0,1], sit:[0,1], hair:'#4A2A10', shirt:'#6366F1',
+  role:'Executive Assistant & Department Liaison',
+  tagline:'Visits departments, delivers task briefings to department leads, and collects completion reports.',
+  tasks:['Walking deliverable to Operations pod','Briefing Marketing lead on campaign mandate','Syncing with Finance on weekly burn report'],
+  ev:[{i:'⚡', t:()=>`Delivered task handoff to department lead`, p:3}],
+  stats:[['Handoffs done','28'],['Departments active','6'],['Avg handoff time','1.2m'],['Pending blockers','0']],
+  chartLbl:'Handoffs — last 7 days', chart:[22,26,24,28,29,31,34],
+  greeting:`Chief of Staff standing by. I coordinate between the Head Table and every department pod in real time.`,
+  chips:['Deliverable status','Active department handoffs','Blocker review']
+},
+{ id:'exec_ops', name:'EXEC OPERATIONS', dept:'ceo', desk:[1,1], sit:[1,1], hair:'#20242E', shirt:'#6366F1',
+  role:'Executive Operations & Documentation Lead',
+  tagline:'Translates executive commands into operations workflows and compiles the overall executive documentation.',
+  tasks:['Structuring operations workflow for Operations pod','Drafting master company report','Consolidating department deliverables'],
+  ev:[{i:'📑', t:()=>`Master executive documentation compiled`, p:3}],
+  stats:[['Workflows active','9'],['Master reports','12'],['Ops SLA','99.8%'],['Departments covered','6 / 6']],
+  chartLbl:'Reports compiled — last 7 days', chart:[8,11,9,14,12,15,18],
+  greeting:`Head Table Operations active. I manage cross-functional workflows and synthesize all departmental deliverables into executive documentation.`,
+  chips:['Compile master report','Operations workflow audit','Department status roll-up']
+},
 /* ============ (Customer Support retired 5 Sep 2026 — see EMAILS below) ============ */
 /* ============ SALES ============ */
 { id:'enzo', name:'LEAD ENRICHER', dept:'sales', desk:[17,3], sit:[17,4], hair:'#1c1c2e', shirt:'#fbbf24',
@@ -789,7 +826,7 @@ export const V1 = [
   chips:['What did you deliver?','Status of the mockup?','How busy are you?'] },
 
 ];
-export const STATS = { emailsSent:128, drafts:41, reports:9, projects:12, onTrack:11, chats:11, insMkt:3, insOps:5, cpa:41.0, spencer:14, arwin:31, jack:16, managers:5, autoOnb:17, billsPaid:14 };
+export const STATS = { ceoDirectives:0, ceoReports:0, emailsSent:0, drafts:0, reports:0, projects:0, onTrack:0, chats:0, insMkt:0, insOps:0, cpa:0, spencer:0, arwin:0, jack:0, managers:0, autoOnb:0, billsPaid:0 };
 export const FILE_GEN = {
   pros: ()=>({ icon:'⛏', name:'outbound-batch-'+clockStr().replace(':','')+'.csv', meta:'verified prospects · handed to the Sales Lead · click to view',
     content:`company,city,headcount,contact,title,mobile,icp_score\n${rnd(P.co)},${rnd(P.city)},${ri(8,60)},${person()},${rnd(['Head of Sales','Sales Manager','GM','Founder'])},verified ✓,${ri(70,94)}\n${rnd(P.co)},${rnd(P.city)},${ri(8,60)},${person()},${rnd(['Sales Manager','Director','Founder'])},verified ✓,${ri(70,94)}\n${rnd(P.co)},${rnd(P.city)},${ri(8,60)},${person()},${rnd(['GM','Head of Sales'])},verified ✓,${ri(70,94)}\n…${ri(24,38)} rows · dupes stripped · existing customers excluded` }),
@@ -801,7 +838,7 @@ export const FILE_GEN = {
     content:`DESIGN DELIVERY\n\nbrief: ${rnd(['6-slide IG carousel — the 10am Rule','3 Meta ad variants — same copy, 3 layouts','quote-card set — 4 customer wins'])}\nbriefed by: ${rnd(['INSTAGRAM ORGANIC','META ADS','PROPOSALS'])}\nturnaround: ${ri(2,5)} hours\n\nspecs\n  palette ........ ink #151414 / cream #FDFFF8 + chips\n  type ........... serif display + sans body (brand kit)\n  formats ........ 1080×1350 + 1080×1920 exports\n\nstatus: delivered ✓ · source files in the Brain → Brand Kit` }),
   piper: ()=>{ const co=rnd(P.co), n=ri(6,28), pl=rnd(P.plan), m=ri(500,2400);
     return { icon:'📄', name:`proposal-${slug(co)}.pdf`, meta:'proposal draft · awaiting AJ approval · click to view',
-    content:`AGENTS OFFICE — PROPOSAL\nClient: ${co}\nSeats: ${n} · Plan: ${pl} · ${money(m)}/mo (12-mo term, 10% annual disc.)\n\n1. YOUR USE CASE\n   ${co} needs call tracking and coaching across ${n} reps.\n   Current stack loses ~30% of call outcomes to manual logging.\n\n2. PRICING\n   ${n} seats × ${pl} = ${money(m)}/mo · locked for 12 months\n\n3. PROOF\n   Auckland roofing co: 0 → 40 tracked calls/week in 14 days.\n\n4. NEXT STEPS\n   Reply to the cover email or sign online — link included.\n\n— drafted by PROPOSALS in 4 min · pulled pricing + case study from the Brain` };},
+    content:`BLACKPEAK OFFICE — PROPOSAL\nClient: ${co}\nSeats: ${n} · Plan: ${pl} · ${money(m)}/mo (12-mo term, 10% annual disc.)\n\n1. YOUR USE CASE\n   ${co} needs call tracking and coaching across ${n} reps.\n   Current stack loses ~30% of call outcomes to manual logging.\n\n2. PRICING\n   ${n} seats × ${pl} = ${money(m)}/mo · locked for 12 months\n\n3. PROOF\n   Auckland roofing co: 0 → 40 tracked calls/week in 14 days.\n\n4. NEXT STEPS\n   Reply to the cover email or sign online — link included.\n\n— drafted by PROPOSALS in 4 min · pulled pricing + case study from the Brain` };},
   newt: ()=>({ icon:'✍', name:'newsletter-august-draft.md', meta:'draft v3 · awaiting AJ approval · click to view',
     content:`SUBJECT A: calls before 10am are a trap\nSUBJECT B: we looked at 40,000 calls — call at this time\n\n# The 10am Rule\nConnect rates nearly double between 10:00–11:30am.\nWe pulled the (anonymised) numbers across 40,000 dials:\n\n  before 10am ......... 11% connect\n  10:00–11:30 ......... 21% connect\n  after 4pm ........... 9% connect\n\nCustomer story: Harbour City Roofing went 0 → 40 tracked\ncalls/week. One tool tip: pin your top list to the dialler.\n\nCTA (soft): reply "10AM" and we'll send the full breakdown.` }),
   ada: ()=>{ const sp=ri(600,780);

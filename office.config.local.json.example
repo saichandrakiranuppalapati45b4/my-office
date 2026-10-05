@@ -1,0 +1,70 @@
+{
+  "name": "My Business",
+  "brain": "./brain",
+  "port": 4520,
+  "openrouterApiKey": "sk-or-v1-your-openrouter-key-here",
+  "openrouterModel": "anthropic/claude-3.5-sonnet",
+  "models": {
+    "default": "anthropic/claude-3.5-sonnet",
+    "departments": {
+      "emails": ["anthropic/claude-3.5-haiku", "google/gemini-2.5-flash", "openai/gpt-4o-mini"],
+      "marketing": ["anthropic/claude-3.7-sonnet", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"],
+      "sales": ["anthropic/claude-3.5-sonnet", "openai/gpt-4o", "google/gemini-2.5-pro"],
+      "ops": ["deepseek/deepseek-chat", "openai/gpt-4o", "anthropic/claude-3.5-sonnet"],
+      "fin": ["anthropic/claude-3.7-sonnet", "openai/gpt-4o", "google/gemini-2.5-pro"],
+      "delivery": ["anthropic/claude-3.5-sonnet", "openai/gpt-4o", "deepseek/deepseek-chat"]
+    },
+    "fallbacks": [
+      "anthropic/claude-3.5-sonnet",
+      "openai/gpt-4o",
+      "google/gemini-2.5-pro",
+      "deepseek/deepseek-chat"
+    ]
+  },
+  "mcp": {
+    "allow": [],
+    "deny": [],
+    "departments": {
+      "Supabase": ["ops", "delivery", "fin", "sales", "emails", "marketing"],
+      "Gmail": ["emails", "sales", "ops", "fin", "delivery"],
+      "Google Calendar": ["emails", "sales", "delivery"],
+      "Meta": ["marketing"],
+      "Twitter": ["marketing"],
+      "Slack": ["emails", "ops", "delivery"]
+    },
+    "servers": [
+      {
+        "name": "Supabase",
+        "status": "connected"
+      },
+      {
+        "name": "Gmail",
+        "status": "connected"
+      },
+      {
+        "name": "Google Calendar",
+        "status": "connected"
+      },
+      {
+        "name": "Meta",
+        "status": "connected"
+      },
+      {
+        "name": "Twitter",
+        "status": "connected"
+      },
+      {
+        "name": "Slack",
+        "status": "connected"
+      }
+    ]
+  },
+  "tools": {
+    "web": true,
+    "browser": true
+  },
+  "teams": {
+    "enabled": true,
+    "max": 4
+  }
+}

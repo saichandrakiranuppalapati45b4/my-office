@@ -2,6 +2,44 @@
   "_about": "The 35 agents of your office. Change name, role, does, tools and brief (standing instructions) freely; id, department and lead are fixed (six pods, 35 seats). Put personal edits in office.agents.local.json (gitignored) so git pull never overwrites them. Ask Claude Code in this folder to change agents for you — see CLAUDE.md.",
   "agents": [
     {
+      "id": "ceo_lead",
+      "department": "ceo",
+      "lead": true,
+      "name": "CHIEF EXECUTIVE",
+      "role": "Chief Executive Officer & Orchestrator",
+      "does": "Receives directives from owner, coordinates cross-departmental operations, and commands the executive office.",
+      "tools": [
+        "gmail",
+        "notion",
+        "supabase",
+        "slack"
+      ]
+    },
+    {
+      "id": "cos",
+      "department": "ceo",
+      "lead": false,
+      "name": "CHIEF OF STAFF",
+      "role": "Executive Assistant & Department Liaison",
+      "does": "Visits departments, delivers task briefings to department leads, tracks deliverables, and expedites blockers.",
+      "tools": [
+        "slack",
+        "notion"
+      ]
+    },
+    {
+      "id": "exec_ops",
+      "department": "ceo",
+      "lead": false,
+      "name": "EXEC OPERATIONS",
+      "role": "Executive Operations & Documentation Lead",
+      "does": "Translates executive commands into operations workflows, routes work to Operations and Marketing, and compiles the overall executive report.",
+      "tools": [
+        "supabase",
+        "notion"
+      ]
+    },
+    {
       "id": "elead",
       "department": "emails",
       "lead": true,

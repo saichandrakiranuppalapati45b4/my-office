@@ -15,8 +15,9 @@ export const TOKENS = {
 // the periwinkle palette and the key 'fin' (now FINANCE); Proposals + Intel moved out into
 // a new 'ops' pod (OPERATIONS) alongside Legal Review, Compliance and Internal Reporting.
 // V3.1 (5 Sep 2026, AJ): SUPPORT → EMAILS (same mint slot), new DELIVERY pod (sky) on the top axis.
-export const DEPT_KEYS = ['emails', 'sales', 'marketing', 'ops', 'fin', 'delivery'];
+export const DEPT_KEYS = ['ceo', 'emails', 'sales', 'marketing', 'ops', 'fin', 'delivery'];
 export const DEPTS = {
+  ceo:       { name: 'HEAD TABLE',       short: 'HEAD TABLE', chip: '#6366F1', ink: '#3730A3', floor: '#EEF2FF' },
   emails:    { name: 'EMAILS',           short: 'EMAILS',  chip: '#5ADEB7', ink: '#1E9070', floor: '#E9F6EF' },
   delivery:  { name: 'DELIVERY',         short: 'DELIVERY', chip: '#8FD3F4', ink: '#2E86AB', floor: '#E6F4FB' },
   sales:     { name: 'SALES',            short: 'SALES',   chip: '#EADC8F', ink: '#A08A1E', floor: '#F6F1DA' },
@@ -26,8 +27,12 @@ export const DEPTS = {
   brain:     { name: 'THE BRAIN',        short: 'THE BRAIN', chip: '#D1DECD', ink: '#4C7A57', floor: '#E9EFE4' },
 };
 
-// 35 agents (V3.4, 7 Sep 2026: every department has a lead). grid = [col,row] desk slot on the department plinth.
+// 38 agents: 7 departments with leads + Head Table. grid = [col,row] desk slot on the department plinth.
 export const AGENTS = [
+  // HEAD TABLE / CEO (3) — Executive Command & Delegation
+  { id: 'ceo_lead', name: 'CHIEF EXECUTIVE',  dept: 'ceo',       lead: true,  grid: [0.5, 0], hair: '#1A1A1A', skin: '#E8B98E' },
+  { id: 'cos',      name: 'CHIEF OF STAFF',    dept: 'ceo',       grid: [0, 1], hair: '#4A2A10', skin: '#F0C9A0' },
+  { id: 'exec_ops', name: 'EXEC OPERATIONS',   dept: 'ceo',       grid: [1, 1], hair: '#20242E', skin: '#C68B59' },
   // EMAILS (5) — replaced Customer Support, 5 Sep 2026
   { id: 'elead', name: 'EMAILS LEAD',         dept: 'emails',    lead: true,  grid: [0.5, 0], hair: '#2b2b2b', skin: '#E8B98E' },
   { id: 'cmail', name: 'CLIENT EMAILS',       dept: 'emails',    grid: [0, 1], hair: '#3b2b1d', skin: '#F0C9A0' },
@@ -71,20 +76,23 @@ export const AGENTS = [
   { id: 'ona',   name: 'ONBOARDER',           dept: 'delivery',  grid: [1, 3], hair: '#0d0d0d', skin: '#9C6B43' },
 ];
 
-// Plinth placement in world XZ. Brain central; departments well separated (AJ: not too close at zoom-out).
+// Plinth placement in world XZ. Brain central; Head Table commanding at north axis; departments well separated.
 export const LAYOUT = {
   brain:     { pos: [0, 0],     w: 16, d: 16 },
+  ceo:       { pos: [0, -23],   w: 22, d: 20 },   // HEAD TABLE / CEO executive pod
+  delivery:  { pos: [0, -52],   w: 20, d: 26 },   // DELIVERY pod on top axis
   emails:    { pos: [-30, -23], w: 20, d: 26 },
-  delivery:  { pos: [0, -48],   w: 20, d: 30 },   // 6th pod mirrors ops on the top axis
   sales:     { pos: [30, -23],  w: 20, d: 30 },
   marketing: { pos: [-30, 23],  w: 20, d: 30 },
   fin:       { pos: [30, 23],   w: 20, d: 26 },
-  ops:       { pos: [0, 48],    w: 20, d: 30 },   // the 5th pod fills the empty bottom-left gap
+  ops:       { pos: [0, 48],    w: 20, d: 30 },
 };
 
 // Department billboard metrics (v1 rule #5: live metrics float above each dept,
 // values tick green on change, "Waiting Approval" pulses amber when > 0).
 export const BILLBOARDS = {
+  ceo:       [{ id: 'directives', label: 'DIRECTIVES RUN',   val: 18 },
+              { id: 'delegated',  label: 'DEPT REPORTS IN',  val: 12 }],
   emails:    [{ id: 'emails',    label: 'EMAILS SENT',      val: 128 }],
   delivery:  [{ id: 'reports',   label: 'REPORTS SENT',     val: 9 }],
   sales:     [{ id: 'leads',     label: 'LEADS ENRICHED',   val: 47 },
@@ -98,6 +106,7 @@ export const BILLBOARDS = {
 // Approval asks (agent requests → AJ decides; v1 flavour).
 // Per-agent first so the ask matches who's asking; dept pool is the fallback.
 export const APPROVAL_ASKS = {
+  ceo:       ['Sign off executive company briefing pack', 'Approve cross-department Q4 expansion directive'],
   emails:    ['Send the price-increase notice to 120 clients — draft attached', 'Reply to the contractor dispute thread — draft attached'],
   delivery:  ['Ship the September report pack to 14 clients', 'Release the brand assets to the client portal'],
   sales:     ['Send re-engagement SMS to 214 cold leads', 'Move 8 enterprise leads to SPENCER’s queue'],
@@ -106,6 +115,7 @@ export const APPROVAL_ASKS = {
   fin:       ['Invoice #218 doesn’t match the contract — hold for review?', 'Write off $180 of unmatched card fees'],
 };
 export const APPROVAL_BY_AGENT = {
+  ceo_lead: 'Sign off executive company briefing pack',
   cmail: 'Send the price-increase notice to 120 clients — draft attached',
   vmail: 'Accept the vendor’s revised SLA — 2 changes flagged',
   crep:  'Send the September report pack to 14 clients — 2 flagged for a call',
@@ -125,6 +135,12 @@ export const APPROVAL_BY_AGENT = {
 
 // Fake terminal lines for the desk screens (per-dept flavour), matching v1's chat voice.
 export const WORKLINES = {
+  ceo: [
+    '▸ orchestrating Q4 cross-dept roadmap',
+    '▸ dispatched ops workflow to OPERATIONS',
+    '▸ reviewed marketing campaign report',
+    '▸ executive briefing compiled for owner',
+  ],
   emails: [
     '▸ drafting reply — client scope question',
     '▸ vendor thread: SLA revision summarised',

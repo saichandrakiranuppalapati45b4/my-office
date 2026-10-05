@@ -51,6 +51,12 @@ export function makePlinth(w, d, floorColor) {
   floor.position.y = 0;
   floor.castShadow = false;
   g.add(floor);
+  if (floorColor === '#EEF2FF') {
+    // Executive Head Table: brushed gold accent rim along the reveal
+    const goldRim = rbox(w - 0.35, d - 0.35, 0.05, '#D4AF37', 0.8);
+    goldRim.position.y = -0.05;
+    g.add(goldRim);
+  }
   return g;
 }
 
