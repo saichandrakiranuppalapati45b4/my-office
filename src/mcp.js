@@ -16,7 +16,7 @@ import { applyAgentTools, profileShared } from './profile.js';
 // agent → tools they'd plausibly be driving (falls back to any connector in the dept's dock)
 export const AGENT_MCP = {
   // ceo / head table
-  ceo_lead: ['notion', 'gmail', 'slack'], cos: ['slack', 'notion'], exec_ops: ['supabase', 'notion'],
+  ceo_lead: ['notion', 'gmail', 'slack'], cos: ['slack', 'notion'], exec_ops: ['gmail', 'notion'],
   // marketing
   mlead: ['meta', 'clarity', 'notion'], ada: ['meta', 'clarity'], newt: ['beehiiv', 'loops'], gfx: ['canva'], iggy: ['canva', 'clarity'], riley: ['meta', 'beehiiv', 'clarity', 'notion'],
   vid: ['hyperframes', 'canva'],

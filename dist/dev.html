@@ -2217,9 +2217,10 @@
   const SUPABASE_AUTH_URL = 'https://fhjjwcdooeddsowaqqpw.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_Vljnu2jzHmnIQdeJbbU2Tw_Ty1serob';
 
-  // Initialize Supabase Realtime WebSocket client
+  // Initialize Supabase Realtime WebSocket client only if enabled
   window.supabaseClient = null;
-  if (window.supabase) {
+  const cfgPlugins = (JSON.parse(localStorage.getItem('office_settings') || '{}').plugins) || {};
+  if (window.supabase && cfgPlugins.supabase && cfgPlugins.supabase.enabled && cfgPlugins.supabase.status === 'connected') {
     try {
       window.supabaseClient = window.supabase.createClient(SUPABASE_AUTH_URL, SUPABASE_ANON_KEY);
       window.supabaseClient.channel('realtime_office')
@@ -2505,11 +2506,10 @@
       provider: 'Supabase PostgreSQL & Realtime Auth',
       brandColor: '#3ECF8E',
       icon: '⚡',
-      defaultVal: 'fhjjwcdooeddsowaqqpw',
+      defaultVal: '',
       desc: 'Realtime PostgreSQL with Row Level Security auto-partitioned by user.id.',
-      locked: true,
       scopes: [
-        { key: 'rls_partitioning', label: 'Row Level Security Tenant Isolation', scope: 'postgres.rls', desc: 'Mandatory tenant isolation on public.office_tasks and profiles.', default: true, locked: true },
+        { key: 'rls_partitioning', label: 'Row Level Security Tenant Isolation', scope: 'postgres.rls', desc: 'Mandatory tenant isolation on public.office_tasks and profiles.', default: true },
         { key: 'realtime_sync', label: 'Realtime WebSocket State Subscriptions', scope: 'realtime:subscribe', desc: 'Streams live database events into the 3D office canvas.', default: true },
         { key: 'client_notes', label: 'Synchronize Client Notes & Brain Documents', scope: 'storage:notes', desc: 'Persists office notes and CRM data to cloud tables.', default: true }
       ]
@@ -2662,7 +2662,17 @@
           p.account = '';
         }
       }
+      if (currentSettings.plugins.supabase) {
+        currentSettings.plugins.supabase = { enabled: false, status: 'disconnected', account: '' };
+      }
     }
+    try {
+      const op = JSON.parse(localStorage.getItem('office_plugins') || '{}');
+      if (op.supabase) {
+        delete op.supabase;
+        localStorage.setItem('office_plugins', JSON.stringify(op));
+      }
+    } catch {}
 
     if (!currentSettings) {
       currentSettings = {
@@ -2686,7 +2696,7 @@
           meta: { enabled: false, status: 'disconnected', account: '' },
           twitter: { enabled: false, status: 'disconnected', account: '' },
           slack: { enabled: false, status: 'disconnected', account: '' },
-          supabase: { enabled: true, status: 'connected', account: 'fhjjwcdooeddsowaqqpw' },
+          supabase: { enabled: false, status: 'disconnected', account: '' },
           browser: { enabled: false, status: 'disconnected', account: '' },
           web: { enabled: false, status: 'disconnected', account: '' }
         }
@@ -2778,8 +2788,8 @@
     PLUGINS.forEach(plug => {
       const card = document.createElement('div');
       const plugData = savedPlugins[plug.key] || {};
-      const isEnabled = plugData.enabled === true || (plug.key === 'supabase' && plugData.enabled !== false);
-      const isConnected = isEnabled && (plugData.status === 'connected' || plug.key === 'supabase');
+      const isEnabled = plugData.enabled === true;
+      const isConnected = isEnabled && plugData.status === 'connected';
 
       card.className = `pm-plugin-card ${isConnected ? 'connected' : 'disconnected'}`;
       card.id = `pm_card_${plug.key}`;
@@ -2790,7 +2800,7 @@
       if (isConnected) {
         const user = getActiveUserIdentity();
         const displayUser = plugData.userName || user.name || 'Sai Chandra Kiran Uppalapati';
-        const displayAcc = plugData.account || (plug.key === 'supabase' ? 'fhjjwcdooeddsowaqqpw' : user.email);
+        const displayAcc = plugData.account || user.email || plug.defaultVal;
         const avatarInitial = (displayUser || 'U')[0].toUpperCase();
         const tokenId = plugData.tokenId || `oauth_${plug.key}_${Date.now().toString(36).slice(-6)}`;
 

@@ -105,8 +105,18 @@ const save = list => {
   fs.writeFileSync(FILE, JSON.stringify(list, null, 2));
 };
 
-// Initial sync from Supabase database
+function isSupabaseEnabled() {
+  try {
+    const local = JSON.parse(fs.readFileSync(path.join(ROOT, 'office.config.local.json'), 'utf8'));
+    return local.plugins?.supabase?.enabled === true && local.plugins?.supabase?.status === 'connected';
+  } catch {
+    return false;
+  }
+}
+
+// Initial sync from Supabase database (only if enabled)
 (async function syncFromSupabase() {
+  if (!isSupabaseEnabled()) return;
   try {
     const dbTasks = await getTasks();
     if (dbTasks && dbTasks.length > 0) {
@@ -641,11 +651,13 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/brain') return json(res, 200, graph);
     if (url.pathname === '/api/usage') return json(res, 200, await getUsage(url.searchParams.get('refresh') === '1')); // V3.6: the plan's gauge (never a 500: unavailable is an answer)
     if (url.pathname === '/api/tasks' && req.method === 'GET') {
-      const uid = url.searchParams.get('user_id');
-      const dbTasks = await getTasks(uid || null);
-      if (Array.isArray(dbTasks)) {
-        save(dbTasks);
-        return json(res, 200, dbTasks);
+      if (isSupabaseEnabled()) {
+        const uid = url.searchParams.get('user_id');
+        const dbTasks = await getTasks(uid || null);
+        if (Array.isArray(dbTasks) && dbTasks.length > 0) {
+          save(dbTasks);
+          return json(res, 200, dbTasks);
+        }
       }
       return json(res, 200, load());
     }
@@ -842,7 +854,7 @@ const server = http.createServer(async (req, res) => {
           meta: { enabled: false, status: 'disconnected', account: '' },
           twitter: { enabled: false, status: 'disconnected', account: '' },
           slack: { enabled: false, status: 'disconnected', account: '' },
-          supabase: { enabled: true, status: 'connected', account: 'fhjjwcdooeddsowaqqpw' },
+          supabase: { enabled: false, status: 'disconnected', account: '' },
           browser: { enabled: false, status: 'disconnected', account: '' },
           web: { enabled: false, status: 'disconnected', account: '' }
         }
@@ -1072,7 +1084,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(cfg.port, () => {
   console.log(`Blackpeak Office ${version} → http://localhost:${cfg.port}`);
   console.log(`  business: ${cfg.name}   brain: ${BRAIN} (${graph.notes} notes, ${graph.links.length} links)   llm: ${backend} · ${backend === 'openrouter' ? openrouter.defaultModel : modelName(cfg.model)}${cfg.effort ? ' · effort ' + cfg.effort : ''} by default`);
-  testConnection().then(ok => { if (ok) console.log('  supabase: connected to "my office" (public.office_tasks, public.office_notes, public.office_clients)'); }).catch(() => {});
+  if (isSupabaseEnabled()) { testConnection().then(ok => { if (ok) console.log('  supabase: connected to "my office" (public.office_tasks, public.office_notes, public.office_clients)'); }).catch(() => {}); }
   getUsage(true).then(u => console.log(u.source === 'claude' ? `  usage: session ${u.session?.percent ?? '—'}% · week ${u.week?.percent ?? '—'}% (your Claude plan, as Claude Code shows it)` : `  usage: Claude's gauge unavailable (${u.reason}) — showing the office's own count`)).catch(() => {});
   console.log(`  tasks: ${FILE}   notes the agents write: ${NOTES_DIR}`);
   const rl = loadRoutines(); const nx = rl.filter(r => !r.paused && r.nextAt).sort((a, b) => a.nextAt - b.nextAt)[0];

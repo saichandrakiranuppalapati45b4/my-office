@@ -831,8 +831,8 @@ export function initTasks(ctx) {
             mode.title = 'Connected to Realtime Cloud · OpenRouter AI';
           }
           if (brain && brain.setQuiet) brain.setQuiet(true);
-          if (window.supabase) {
-            window.supabase.from('office_tasks').select('*').eq('user_id', u.id).order('created_at', { ascending: false }).then(({ data }) => {
+          if (window.supabaseClient) {
+            window.supabaseClient.from('office_tasks').select('*').eq('user_id', u.id).order('created_at', { ascending: false }).then(({ data }) => {
               if (data && data.length) {
                 for (const st of data) {
                   if (!agentOf(st.agent)) continue;

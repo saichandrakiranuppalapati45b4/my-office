@@ -59,8 +59,7 @@ export async function loadConnectors({ timeout = 25000 } = {}) {
     const localCfg = JSON.parse(localStorage.getItem('office_plugins') || '{}');
     const servers = [
       { key: 'gmail', name: 'Gmail', status: 'connected', allowed: true, depts: ['emails', 'sales', 'ops', 'fin', 'delivery', 'ceo'] },
-      { key: 'slack', name: 'Slack', status: 'connected', allowed: true, depts: ['ceo', 'marketing', 'delivery', 'ops'] },
-      { key: 'supabase', name: 'Supabase', status: 'connected', allowed: true, depts: ['ceo', 'ops', 'delivery'] }
+      { key: 'slack', name: 'Slack', status: 'connected', allowed: true, depts: ['ceo', 'marketing', 'delivery', 'ops'] }
     ];
     for (const [k, p] of Object.entries(localCfg)) {
       if (p.enabled && !servers.find(s => s.key === k)) {
