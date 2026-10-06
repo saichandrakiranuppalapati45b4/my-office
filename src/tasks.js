@@ -166,8 +166,8 @@ export function initTasks(ctx) {
     return t;
   }
   const touch = (t, ev) => { t.changedAt = Date.now(); t.last = ev; dirty = true; };
-  const agentTasks = (id, st) => tasks.filter(t => t.agent === id && t.state === st);
-  const deptTasks = (k, st) => tasks.filter(t => t.dept === k && t.state === st);
+  const agentTasks = (id, st) => tasks.filter(t => t.agent === id && (!st || t.state === st));
+  const deptTasks = (k, st) => tasks.filter(t => t.dept === k && (!st || t.state === st));
   function visibleTitles(id) { return new Set(tasks.filter(t => t.agent === id && t.state !== 'done').map(t => t.title)); }
   function pick(id) {
     const seen = visibleTitles(id);
@@ -818,41 +818,7 @@ export function initTasks(ctx) {
       setInterval(poll, 3000);
       window.refreshOfficeRealtime = () => poll();
     } catch (e) {
-      console.warn('office server not reachable — checking user session:', e.message);
-      try {
-        const u = JSON.parse(localStorage.getItem('office_user') || '{}');
-        if (u.id || u.email) {
-          live = true;
-          const mode = panel.querySelector('.tp-mode');
-          if (mode) {
-            mode.hidden = false;
-            mode.textContent = 'LIVE · OPENROUTER';
-            mode.classList.add('live');
-            mode.title = 'Connected to Realtime Cloud · OpenRouter AI';
-          }
-          if (brain && brain.setQuiet) brain.setQuiet(true);
-          if (window.supabaseClient) {
-            window.supabaseClient.from('office_tasks').select('*').eq('user_id', u.id).order('created_at', { ascending: false }).then(({ data }) => {
-              if (data && data.length) {
-                for (const st of data) {
-                  if (!agentOf(st.agent)) continue;
-                  const deptKey = st.dept || st.department;
-                  if (st.state === 'done') {
-                    doneCount[deptKey] = (doneCount[deptKey] || 0) + 1;
-                    const t = mk({ agent: st.agent, title: st.title, text: st.text, plan: st.plan, by: 'you', live: true, sid: st.id, state: 'done',
-                      doneAt: st.doneAt, changedAt: st.doneAt, addedAt: st.addedAt, result: st.result, read: st.read, note: st.note, tools: st.tools || [], used: st.used || [], error: !!st.error, last: 'done' });
-                    deliver(t);
-                  } else reconcile(st);
-                }
-                syncBadges();
-                dirty = true;
-                render(true);
-                renderBoard();
-              }
-            }).catch(() => {});
-          }
-        }
-      } catch (err) {}
+      console.warn('office server not reachable — running local office session:', e.message);
     }
   }
   connect();
@@ -1183,6 +1149,6 @@ export function initTasks(ctx) {
   }
   const calendar = initCalendar({ tasks, routines, agentOf, DEPTS, DEPT_KEYS, RT_DEPTS, rtRefuse, create: createScheduled, createRoutine: createRoutineAt, cancelTask: cancelScheduled, rtAct, openAgent: (id, tab) => openAgent && openAgent(id, tab), esc, isLive: () => live, officeModel: () => officeModel, MODEL_KEYS, modelName, business: () => document.title.replace(/ — (?:Agents|Blackpeak) Office$/, ''), currentDept: () => dept });
   return { tick, toggle, open, close, openFor, isOpen, boardWidth, onFocusChange, onStuck, onResolve, calendar, createScheduled, cancelScheduled,
-           handleChat, addTask, revise, rowHTML, setDept, tasks, panelWidth: () => (chatPanel ? chatPanel.offsetWidth : (panel ? panel.offsetWidth : 400)), isLive: () => live,
+           handleChat, addTask, revise, rowHTML, setDept, tasks, deptTasks, agentTasks, panelWidth: () => (chatPanel ? chatPanel.offsetWidth : (panel ? panel.offsetWidth : 400)), isLive: () => live,
            routines, addRoutine, rtAct, railFor, syncPills, refresh: poll, resolveLive, pendingReject, rejectLive, officeModel: () => officeModel, chosenModel, chosenEffort };
 }

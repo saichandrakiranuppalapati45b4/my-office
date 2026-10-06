@@ -406,26 +406,26 @@ const kv = id => KPIS.find(k => k.id === id).val;
 let brainNotes = brain.state.notes;
 const BB_ROWS = profileRows() || {
   ceo: [
-    ['DIRECTIVES RUN', () => STATS.ceoDirectives || (tasks ? tasks.deptTasks('ceo', 'done').length : 0)],
+    ['DIRECTIVES RUN', () => STATS.ceoDirectives || (tasks && typeof tasks.deptTasks === 'function' ? tasks.deptTasks('ceo', 'done').length : 0)],
     ['DEPT REPORTS IN', () => STATS.ceoReports || 0]],
   emails: [
-    ['EMAILS SENT', () => STATS.emailsSent || (tasks ? tasks.deptTasks('emails', 'done').length : 0)],
-    ['REPLIES DRAFTED', () => STATS.drafts || (tasks ? tasks.deptTasks('emails').filter(t => t.state === 'waiting' || t.state === 'next' || t.state === 'doing').length : 0)]],
+    ['EMAILS SENT', () => STATS.emailsSent || (tasks && typeof tasks.deptTasks === 'function' ? tasks.deptTasks('emails', 'done').length : 0)],
+    ['REPLIES DRAFTED', () => STATS.drafts || (tasks && typeof tasks.deptTasks === 'function' ? tasks.deptTasks('emails').filter(t => t.state === 'waiting' || t.state === 'next' || t.state === 'doing').length : 0)]],
   delivery: [
-    ['REPORTS SENT', () => STATS.reports || (tasks ? tasks.deptTasks('delivery', 'done').length : 0)],
+    ['REPORTS SENT', () => STATS.reports || (tasks && typeof tasks.deptTasks === 'function' ? tasks.deptTasks('delivery', 'done').length : 0)],
     ['ON TRACK', () => typeof STATS.onTrack === 'string' && STATS.onTrack.includes('/') ? STATS.onTrack : `${STATS.onTrack || 0} / ${STATS.projects || 0}`]],
   sales: [
     ['CALLS S·A·J', () => `${STATS.spencer || 0}·${STATS.arwin || 0}·${STATS.jack || 0}`],
     ['NEW MANAGERS', () => STATS.managers || 0],
     ['AUTO-ONBOARDED', () => STATS.autoOnb || 0]],
   marketing: [
-    ['NEW INSIGHTS', () => STATS.insMkt || (tasks ? tasks.deptTasks('marketing', 'done').length : 0)],
+    ['NEW INSIGHTS', () => STATS.insMkt || (tasks && typeof tasks.deptTasks === 'function' ? tasks.deptTasks('marketing', 'done').length : 0)],
     ['COST PER USER', () => '$' + Math.round(STATS.cpa || 0)]],
   ops: [
-    ['PROPOSALS MADE', () => Math.round(kv('proposals') || (tasks ? tasks.deptTasks('ops', 'done').length : 0))],
+    ['PROPOSALS MADE', () => Math.round(kv('proposals') || (tasks && typeof tasks.deptTasks === 'function' ? tasks.deptTasks('ops', 'done').length : 0))],
     ['NEW INSIGHTS', () => STATS.insOps || 0]],
   fin: [
-    ['INVOICES ISSUED', () => Math.round(kv('invoices') || (tasks ? tasks.deptTasks('fin', 'done').length : 0))],
+    ['INVOICES ISSUED', () => Math.round(kv('invoices') || (tasks && typeof tasks.deptTasks === 'function' ? tasks.deptTasks('fin', 'done').length : 0))],
     ['BILLS PAID', () => STATS.billsPaid || 0]],
   brain: [
     ['NOTES INDEXED', () => (brainNotes || 0).toLocaleString('en-NZ')]],

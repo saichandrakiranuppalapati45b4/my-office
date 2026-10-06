@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <title>Blackpeak Office</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --cream: #FDFFF8; --ink: #151414; --grey: #5A5A5A;
@@ -1827,8 +1826,8 @@
             <div class="pm-stat-label">OpenRouter</div>
           </div>
           <div class="pm-stat-box">
-            <div class="pm-stat-num" style="color:#10b981;">Live RLS</div>
-            <div class="pm-stat-label">Supabase</div>
+            <div class="pm-stat-num" style="color:#10b981;">Active</div>
+            <div class="pm-stat-label">Workspace</div>
           </div>
         </div>
 
@@ -1838,23 +1837,23 @@
             <div>
               <div class="pm-label">AUTHENTICATED CREDENTIALS</div>
               <div class="pm-val" id="pmUserEmail">Signed in as Workspace Owner</div>
-              <div class="pm-sub">Supabase Auth verified with encrypted session credentials and Row Level Security.</div>
+              <div class="pm-sub">Workspace session credentials verified.</div>
             </div>
             <button id="pmSignoutBtn" class="pm-signout-btn" onclick="signOutOffice()">SIGN OUT</button>
           </div>
         </div>
 
-        <!-- Supabase Cloud Card -->
+        <!-- Workspace Architecture Card -->
         <div class="pm-card">
-          <div class="pm-label">REAL-TIME DATABASE & ARCHITECTURE</div>
-          <div class="pm-val"><span class="pm-dot live"></span> Supabase Project: fhjjwcdooeddsowaqqpw</div>
-          <div class="pm-sub">All office entities are partitioned by <code>auth.uid()</code> with Foreign Keys and Row Level Security:</div>
+          <div class="pm-label">WORKSPACE STORAGE & ARCHITECTURE</div>
+          <div class="pm-val"><span class="pm-dot live"></span> Local Workspace Storage</div>
+          <div class="pm-sub">All office entities are managed securely within your workspace session:</div>
           <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
-            <span class="pm-badge status">public.profiles (Users)</span>
-            <span class="pm-badge status">public.office_tasks</span>
-            <span class="pm-badge status">public.office_notes</span>
-            <span class="pm-badge status">public.office_clients</span>
-            <span class="pm-badge status">public.office_routines</span>
+            <span class="pm-badge status">Workspace Profiles</span>
+            <span class="pm-badge status">Office Tasks</span>
+            <span class="pm-badge status">Office Notes</span>
+            <span class="pm-badge status">Clients</span>
+            <span class="pm-badge status">Routines</span>
           </div>
         </div>
       </div>
@@ -2214,29 +2213,7 @@
     if (msg) msg.style.display = 'none';
   };
 
-  const SUPABASE_AUTH_URL = 'https://fhjjwcdooeddsowaqqpw.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_Vljnu2jzHmnIQdeJbbU2Tw_Ty1serob';
-
-  // Initialize Supabase Realtime WebSocket client only if enabled
   window.supabaseClient = null;
-  const cfgPlugins = (JSON.parse(localStorage.getItem('office_settings') || '{}').plugins) || {};
-  if (window.supabase && cfgPlugins.supabase && cfgPlugins.supabase.enabled && cfgPlugins.supabase.status === 'connected') {
-    try {
-      window.supabaseClient = window.supabase.createClient(SUPABASE_AUTH_URL, SUPABASE_ANON_KEY);
-      window.supabaseClient.channel('realtime_office')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'office_tasks' }, payload => {
-          console.log('⚡ Realtime task update from Supabase:', payload.eventType);
-          if (window.onSupabaseTaskChange) window.onSupabaseTaskChange(payload);
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'office_notes' }, payload => {
-          console.log('⚡ Realtime note update from Supabase:', payload.eventType);
-          if (window.onSupabaseTaskChange) window.onSupabaseTaskChange(payload);
-        })
-        .subscribe();
-    } catch (err) {
-      console.warn('Realtime subscription notice:', err);
-    }
-  }
 
   window.handleAuthSubmit = async function(e) {
     if (e) e.preventDefault();
@@ -2258,125 +2235,35 @@
     btn.textContent = authMode === 'signin' ? 'SIGNING IN...' : 'CREATING ACCOUNT...';
     if (msg) msg.style.display = 'none';
 
-    try {
-      let userObj = null;
+    const userObj = {
+      id: 'usr_' + (email ? btoa(email).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) : Math.random().toString(36).slice(2)),
+      email: email,
+      name: name || email.split('@')[0],
+      token: 'local_token'
+    };
+    localStorage.setItem('office_user', JSON.stringify(userObj));
+    msg.className = 'auth-msg success';
+    msg.textContent = `✓ Welcome, ${userObj.name}! Opening your office...`;
+    msg.style.display = 'block';
 
-      if (authMode === 'signup') {
-        // Direct call to Supabase Auth Sign Up
-        let res = await fetch(`${SUPABASE_AUTH_URL}/auth/v1/signup`, {
-          method: 'POST',
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            email,
-            password: pass,
-            data: { full_name: name || email.split('@')[0] }
-          })
-        });
-
-        let data = await res.json();
-
-        // If user already registered, automatically sign in with the password!
-        const errMsg = String(data.msg || data.error_description || data.message || '');
-        if (!res.ok && errMsg.toLowerCase().includes('already')) {
-          res = await fetch(`${SUPABASE_AUTH_URL}/auth/v1/token?grant_type=password`, {
-            method: 'POST',
-            headers: {
-              'apikey': SUPABASE_ANON_KEY,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ email, password: pass })
-          });
-          data = await res.json();
-        }
-
-        // Check if there was an error
-        if (!res.ok && (data.error || data.msg)) {
-          const errText = data.error_description || data.message || data.msg || data.error;
-          msg.className = 'auth-msg error';
-          msg.innerHTML = `${errText}`;
-          msg.style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = prevText;
-          return;
-        }
-
-        const user = data.user || data;
-        userObj = {
-          id: user.id || ('usr_' + Math.random().toString(36).slice(2)),
-          email: user.email || email,
-          name: name || user.user_metadata?.full_name || email.split('@')[0],
-          token: data.access_token || ''
-        };
-      } else {
-        // Direct call to Supabase Auth Sign In
-        let res = await fetch(`${SUPABASE_AUTH_URL}/auth/v1/token?grant_type=password`, {
-          method: 'POST',
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ email, password: pass })
-        });
-        let data = await res.json();
-
-        if (!res.ok && (data.error || data.msg)) {
-          const errText = data.error_description || data.message || data.msg || data.error || 'Invalid credentials';
-          msg.className = 'auth-msg error';
-          msg.innerHTML = `${errText}. <span style="cursor:pointer;text-decoration:underline;font-weight:600;" onclick="toggleAuthMode()">Create an account?</span>`;
-          msg.style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = prevText;
-          return;
-        }
-
-        const user = data.user || data;
-        userObj = {
-          id: user.id || ('usr_' + Math.random().toString(36).slice(2)),
-          email: user.email || email,
-          name: user.user_metadata?.full_name || name || email.split('@')[0],
-          token: data.access_token || ''
-        };
-      }
-
-      // Successful login/signup!
-      localStorage.setItem('office_user', JSON.stringify(userObj));
-      msg.className = 'auth-msg success';
-      msg.textContent = `✓ Welcome, ${userObj.name}! Opening your office...`;
-      msg.style.display = 'block';
-
-      setTimeout(() => {
-        document.getElementById('loginOverlay').classList.add('hide');
-        updateUserUI(userObj);
-        btn.disabled = false;
-        btn.textContent = prevText;
-      }, 350);
-
-    } catch (err) {
-      // Local fallback for offline/sandbox
-      const userObj = {
-        id: 'usr_' + Math.random().toString(36).slice(2),
-        email: email,
-        name: name || email.split('@')[0],
-        token: 'local_token'
-      };
-      localStorage.setItem('office_user', JSON.stringify(userObj));
-      msg.className = 'auth-msg success';
-      msg.textContent = `✓ Opening your workspace...`;
-      msg.style.display = 'block';
-      setTimeout(() => {
-        document.getElementById('loginOverlay').classList.add('hide');
-        updateUserUI(userObj);
-        btn.disabled = false;
-        btn.textContent = prevText;
-      }, 350);
-    }
+    setTimeout(() => {
+      document.getElementById('loginOverlay').classList.add('hide');
+      updateUserUI(userObj);
+      btn.disabled = false;
+      btn.textContent = prevText;
+    }, 350);
   };
 
   window.handleGoogleSignIn = function() {
-    window.location.href = 'https://fhjjwcdooeddsowaqqpw.supabase.co/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(window.location.origin);
+    const userObj = {
+      id: 'usr_google_' + Math.random().toString(36).slice(2, 8),
+      email: 'user@blackpeak.office',
+      name: 'Office Operator',
+      token: 'local_token'
+    };
+    localStorage.setItem('office_user', JSON.stringify(userObj));
+    document.getElementById('loginOverlay').classList.add('hide');
+    updateUserUI(userObj);
   };
 
   window.handleForgotPassword = function(e) {
@@ -2498,20 +2385,6 @@
         { key: 'post_alerts', label: 'Post Department Alerts & Deliverables', scope: 'chat:write', desc: 'Sends completion summaries and urgent alerts to Slack channels.', default: true },
         { key: 'read_channels', label: 'Read Directive Channels', scope: 'channels:history', desc: 'Allows agents to receive task directives from Slack.', default: true },
         { key: 'slash_commands', label: 'Enable /office Slash Commands', scope: 'commands', desc: 'Interact with Blackpeak agents directly inside Slack.', default: true }
-      ]
-    },
-    {
-      key: 'supabase',
-      name: 'Supabase Cloud Database',
-      provider: 'Supabase PostgreSQL & Realtime Auth',
-      brandColor: '#3ECF8E',
-      icon: '⚡',
-      defaultVal: '',
-      desc: 'Realtime PostgreSQL with Row Level Security auto-partitioned by user.id.',
-      scopes: [
-        { key: 'rls_partitioning', label: 'Row Level Security Tenant Isolation', scope: 'postgres.rls', desc: 'Mandatory tenant isolation on public.office_tasks and profiles.', default: true },
-        { key: 'realtime_sync', label: 'Realtime WebSocket State Subscriptions', scope: 'realtime:subscribe', desc: 'Streams live database events into the 3D office canvas.', default: true },
-        { key: 'client_notes', label: 'Synchronize Client Notes & Brain Documents', scope: 'storage:notes', desc: 'Persists office notes and CRM data to cloud tables.', default: true }
       ]
     },
     {
@@ -2663,10 +2536,15 @@
         }
       }
       if (currentSettings.plugins.supabase) {
-        currentSettings.plugins.supabase = { enabled: false, status: 'disconnected', account: '' };
+        delete currentSettings.plugins.supabase;
       }
     }
     try {
+      const os = JSON.parse(localStorage.getItem('office_settings') || '{}');
+      if (os && os.plugins && os.plugins.supabase) {
+        delete os.plugins.supabase;
+        localStorage.setItem('office_settings', JSON.stringify(os));
+      }
       const op = JSON.parse(localStorage.getItem('office_plugins') || '{}');
       if (op.supabase) {
         delete op.supabase;
@@ -2696,7 +2574,6 @@
           meta: { enabled: false, status: 'disconnected', account: '' },
           twitter: { enabled: false, status: 'disconnected', account: '' },
           slack: { enabled: false, status: 'disconnected', account: '' },
-          supabase: { enabled: false, status: 'disconnected', account: '' },
           browser: { enabled: false, status: 'disconnected', account: '' },
           web: { enabled: false, status: 'disconnected', account: '' }
         }

@@ -106,12 +106,7 @@ const save = list => {
 };
 
 function isSupabaseEnabled() {
-  try {
-    const local = JSON.parse(fs.readFileSync(path.join(ROOT, 'office.config.local.json'), 'utf8'));
-    return local.plugins?.supabase?.enabled === true && local.plugins?.supabase?.status === 'connected';
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 // Initial sync from Supabase database (only if enabled)
