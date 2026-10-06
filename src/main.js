@@ -1326,10 +1326,12 @@ function pickWorkMode(r, now) {
 // standing modes drift the agent from the chair to a spot beside the desk, and can re-face the camera
 const FACE_CAM = Math.PI / 4;
 function applyStandAndFacing(r, mode, now, dt) {
+  if (!r || !r.person || !r.seat) return;
   const u = r.person.userData;
   const sk = (u.cur && u.cur.standK) || 0;
-  r.person.position.x = r.seat.x + (r.stand.x - r.seat.x) * sk;
-  r.person.position.z = r.seat.z + (r.stand.z - r.seat.z) * sk;
+  const stand = r.stand || r.seat;
+  r.person.position.x = r.seat.x + (stand.x - r.seat.x) * sk;
+  r.person.position.z = r.seat.z + (stand.z - r.seat.z) * sk;
   if (mode === 'spin') {
     const span = Math.max(400, (r.modeUntil - r.modeStart) || 1500);
     r.person.rotation.y = r.seatRot + ((now - r.modeStart) / span) * Math.PI * 2;

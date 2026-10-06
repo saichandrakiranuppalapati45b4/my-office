@@ -130,7 +130,7 @@ function span(ms) { // "4 min" · "1 h 12 m" · "3 h"
   const h = Math.floor(m / 60), r = m % 60;
   return r ? `${h} h ${r} m` : `${h} h`;
 }
-const agentOf = id => AGENTS.find(a => a.id === id);
+const agentOf = id => AGENTS.find(a => a.id === id) || { id, name: id || 'Agent', dept: 'ceo' };
 const STATE_LABEL = { next: 'Backlog', doing: 'In progress', waiting: 'Waiting', done: 'Done', sched: 'Scheduled', scheduled: 'Scheduled' }; // scheduled (V3.2.1): a task with a date, not yet fired
 
 export function initTasks(ctx) {
@@ -387,7 +387,7 @@ export function initTasks(ctx) {
   let teamOn = false, teamsCfg = { enabled: true, max: 4 };
   const teamIntent = text => /\b(as a team|team up|team this|get the (whole )?team|the (whole )?team (on|to|should|can)|with the team|(spawn|use|get) (\d+|two|three|four|five|a few|some) teammates?|\d+ teammates|split (it|this|the work) (up|across|between)|teammates|team:|whole department)\b/i.test(text);
   const asTeam = text => teamsCfg.enabled && (teamOn || teamIntent(text));
-  const leadOf = k => AGENTS.find(x => x.dept === k && x.lead) || AGENTS.filter(x => x.dept === k)[0];
+  const leadOf = k => AGENTS.find(x => x.dept === k && x.lead) || AGENTS.filter(x => x.dept === k)[0] || { id: 'ceo_lead', name: 'Chief Executive', dept: 'ceo' };
   P_.team.addEventListener('click', () => { teamOn = !teamOn; P_.team.classList.toggle('on', teamOn); updateHint(); if (teamOn) P_.input.focus(); });
   function resetTeam() { teamOn = false; P_.team.classList.remove('on'); }
   const teamBit = t => t.team?.members?.length ? ` · <span class="tp-team-chip">TEAM ${t.team.members.length + 1}</span>` : t.piece ? ' · <span class="tp-team-chip">PIECE</span>' : '';
@@ -477,14 +477,15 @@ export function initTasks(ctx) {
     if (rt) { await submitRoutine(rt, title); return; }
     if (live) {
       const text = title, k = dept;
+      const mdl = chosenModel();
       P_.input.value = ''; P_.input.disabled = true; P_.add.disabled = true;
       const team = asTeam(text);
       say(team ? `Routing through Claude — <b>${leadOf(k).name}</b> is reading it for the team…` : `Routing through Claude — ${DEPTS[k].name.toLowerCase()} is reading it…`, 'busy');
       try {
         const u = JSON.parse(localStorage.getItem('office_user') || '{}');
         const r = await fetch(API + '/tasks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: k, text, model: mdl || undefined, effort: effortSend(), team: team || undefined, user_id: u.id || undefined }) });
-        if (!r.ok) throw new Error((await r.json()).error || r.statusText);
         const st = await r.json();
+        if (!r.ok) throw new Error(st.error || r.statusText);
         const t = mk({ agent: st.agent, title: st.title, text: st.text, plan: st.plan, why: st.why, by: 'you', live: true, sid: st.id, model: st.model, modelUsed: st.model || officeModel, modelFrom: st.model ? 'task' : 'office', effort: st.effort,
           team: st.team ? { lead: st.team.lead, members: [] } : undefined });
         resetModel(); resetTeam();
@@ -878,7 +879,8 @@ export function initTasks(ctx) {
   function metaFor(t) {
     const a = agentOf(t.agent), now = Date.now();
     const f = getFocused();
-    const who = (f && f !== 'brain') ? a.name : `${a.name} · ${DEPTS[t.dept].short}`;
+    const dInfo = DEPTS[t.dept] || (a && DEPTS[a.dept]) || { short: 'OPS', name: 'Operations' };
+    const who = (f && f !== 'brain') ? a.name : `${a.name} · ${dInfo.short}`;
     switch (t.state) {
       case 'next': {
         const src = t.piece ? `team piece from ${agentOf(t.leadId)?.name || 'the lead'}` : t.routine ? `routine · ${t.when}${t.late ? ' · <span class="tp-late">late · was due ' + timeStr(t.due) + '</span>' : ''}` : t.by === 'you' ? (t.live ? 'added by you · live' : 'added by you') : t.last === 'handoff' && t.from ? `from ${agentOf(t.from).name}` : t.revised ? 'sent back to revise' : 'from the Brain';
@@ -978,7 +980,7 @@ export function initTasks(ctx) {
   const dim = document.createElement('div'); dim.id = 'boardDim'; document.body.appendChild(dim);
   dim.addEventListener('click', close);
   function cardHTML(t) {
-    const a = agentOf(t.agent), chip = DEPTS[t.dept].chip;
+    const a = agentOf(t.agent), chip = (DEPTS[t.dept] || (a && DEPTS[a.dept]) || { chip: '#6366F1' }).chip;
     const pct = Math.round(t.progress * 100);
     const av = `<span class="tk-av" style="border-color:${chip};background:${chip}55">${a.name[0]}</span>`;
     let meta;
