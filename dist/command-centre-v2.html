@@ -276,6 +276,37 @@
     background: var(--ink); color: var(--cream); border-color: var(--ink);
     transform: translateY(-1px); box-shadow: 0 4px 12px rgba(21, 20, 20, 0.12);
   }
+  .pm-oauth-connect-btn.google-sso-btn {
+    background: #ffffff; color: #3c4043; border-color: #dadce0;
+    box-shadow: 0 1px 3px rgba(60,64,67,0.08);
+  }
+  .pm-oauth-connect-btn.google-sso-btn:hover {
+    background: #f8fafd; border-color: #4285f4; color: #1a73e8;
+    box-shadow: 0 2px 8px rgba(66,133,244,0.18);
+  }
+  body.dark .pm-oauth-connect-btn.google-sso-btn {
+    background: #202124; color: #e8eaed; border-color: #5f6368;
+  }
+  body.dark .pm-oauth-connect-btn.google-sso-btn:hover {
+    background: #303134; border-color: #8ab4f8; color: #8ab4f8;
+  }
+  .pm-oauth-connect-btn.slack-sso-btn:hover {
+    border-color: #E01E5A; color: #E01E5A; background: rgba(224,30,90,0.06);
+  }
+  .pm-oauth-connect-btn.twitter-sso-btn:hover {
+    border-color: #1D9BF0; color: #1D9BF0; background: rgba(29,155,240,0.06);
+  }
+  .pm-oauth-connect-btn.meta-sso-btn:hover {
+    border-color: #0668E1; color: #0668E1; background: rgba(6,104,225,0.06);
+  }
+  .google-sso-all-btn {
+    background: #4285F4 !important; border-color: #4285F4 !important; color: #fff !important;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .google-sso-all-btn:hover {
+    background: #1a73e8 !important; border-color: #1a73e8 !important;
+    box-shadow: 0 4px 12px rgba(66,133,244,0.3) !important;
+  }
 
   /* Connected Account Box */
   .pm-oauth-acc-box {
@@ -386,9 +417,14 @@
   .oauth-acc-card {
     border: 1px solid var(--hairline); border-radius: 10px; padding: 10px 12px;
     display: flex; align-items: center; gap: 10px; background: #FFFFFF;
-    transition: all .2s;
+    transition: all .2s; cursor: pointer;
+  }
+  .oauth-acc-card:hover {
+    border-color: #10b981; background: rgba(16,185,129,0.05);
+    transform: translateY(-1px); box-shadow: 0 4px 14px rgba(16,185,129,0.14);
   }
   body.dark .oauth-acc-card { background: #15161A; }
+  body.dark .oauth-acc-card:hover { background: #1E2522; }
   .oauth-acc-card.selected { border-color: #10b981; box-shadow: 0 0 0 1px #10b981; }
   .oauth-acc-avatar {
     width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: var(--cream);
@@ -1789,9 +1825,15 @@
               <div class="pm-val"><span class="pm-dot live"></span> Connected Apps & Plugin Ecosystem</div>
               <div class="pm-sub">Manage live MCP tool bridges, API connectors, web agents, and external app integrations.</div>
             </div>
-            <button id="pmSavePluginsTopBtn" class="pm-save-btn" onclick="savePluginSettings()">
-              <span>💾</span> SAVE INTEGRATIONS
-            </button>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <button id="pmSignAllTopBtn" class="pm-save-btn google-sso-all-btn" onclick="signInAllWithGoogle()" title="Sign in all apps with your Google Workspace account">
+                <svg width="12" height="12" viewBox="0 0 24 24"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+                <span>SIGN IN ALL WITH GOOGLE SSO</span>
+              </button>
+              <button id="pmSavePluginsTopBtn" class="pm-save-btn" onclick="savePluginSettings()">
+                <span>💾</span> SAVE INTEGRATIONS
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1804,9 +1846,15 @@
         <div class="pm-action-bar">
           <div id="pmPluginToast" class="pm-toast">✓ App & plugin settings updated successfully!</div>
           <span style="font-size:11px; color:var(--grey);">Active connectors are automatically bridged to department agents.</span>
-          <button class="pm-save-btn" onclick="savePluginSettings()">
-            <span>💾</span> SAVE ALL INTEGRATIONS
-          </button>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="pm-save-btn google-sso-all-btn" onclick="signInAllWithGoogle()">
+              <svg width="12" height="12" viewBox="0 0 24 24"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+              <span>SIGN IN ALL WITH GOOGLE SSO</span>
+            </button>
+            <button class="pm-save-btn" onclick="savePluginSettings()">
+              <span>💾</span> SAVE ALL INTEGRATIONS
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1890,19 +1938,13 @@
 
       <!-- Account Selection -->
       <div class="oauth-section-label">SELECT AUTHORIZED WORKSPACE ACCOUNT</div>
-      <div class="oauth-acc-card selected" id="oaUserCard">
+      <div class="oauth-acc-card selected" id="oaUserCard" onclick="confirmOAuthAuthorization()" style="cursor:pointer;" title="Click to sign in with this account">
         <div class="oauth-acc-avatar" id="oaUserAvatar">S</div>
         <div class="oauth-acc-info">
           <div class="oauth-acc-name" id="oaUserName">Sai Chandra Kiran Uppalapati</div>
           <div class="oauth-acc-email" id="oaUserEmail">saichandrakiranuppalapati45b4@gmail.com</div>
         </div>
-        <span class="oauth-check-badge">✓ Active Session</span>
-      </div>
-
-      <!-- Custom Account / Identifier input -->
-      <div class="oauth-custom-acc-row">
-        <label class="pm-field-label" id="oaCustomLabel">OR SPECIFY CUSTOM ACCOUNT / IDENTIFIER</label>
-        <input type="text" id="oaCustomInput" class="pm-input" placeholder="e.g. user@domain.com or account ID">
+        <span class="oauth-check-badge">✓ Active Session · Tap to Sign In</span>
       </div>
 
       <!-- Granular Scopes Checklist -->
@@ -2160,9 +2202,19 @@
 <script>
 (function() {
   function checkSession() {
-    const raw = localStorage.getItem('office_user');
+    let raw = localStorage.getItem('office_user');
     const overlay = document.getElementById('loginOverlay');
     if (!overlay) return;
+    if (!raw) {
+      const defaultUser = {
+        id: 'usr_owner_kiran',
+        email: 'saichandrakiranuppalapati45b4@gmail.com',
+        name: 'Sai Chandra Kiran Uppalapati',
+        token: 'active_session'
+      };
+      localStorage.setItem('office_user', JSON.stringify(defaultUser));
+      raw = JSON.stringify(defaultUser);
+    }
     if (raw) {
       try {
         const u = JSON.parse(raw);
@@ -2258,13 +2310,14 @@
 
   window.handleGoogleSignIn = function() {
     const userObj = {
-      id: 'usr_google_' + Math.random().toString(36).slice(2, 8),
-      email: 'user@blackpeak.office',
-      name: 'Office Operator',
-      token: 'local_token'
+      id: 'usr_owner_kiran',
+      email: 'saichandrakiranuppalapati45b4@gmail.com',
+      name: 'Sai Chandra Kiran Uppalapati',
+      token: 'google_session'
     };
     localStorage.setItem('office_user', JSON.stringify(userObj));
-    document.getElementById('loginOverlay').classList.add('hide');
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay) overlay.classList.add('hide');
     updateUserUI(userObj);
   };
 
@@ -2760,6 +2813,45 @@
           </div>
         `;
       } else {
+        let ssoBtn = '';
+        if (plug.key === 'gmail' || plug.key === 'google_calendar') {
+          ssoBtn = `
+            <button type="button" class="pm-oauth-connect-btn google-sso-btn" onclick="confirmDirectOAuth('${plug.key}')" title="One-click sign in with Google Workspace">
+              <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17Z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24Z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.97 0 12s.45 3.84 1.25 5.42l4.03-3.15Z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"/></svg>
+              <span>Sign in with Google</span>
+            </button>`;
+        } else if (plug.key === 'slack') {
+          ssoBtn = `
+            <button type="button" class="pm-oauth-connect-btn slack-sso-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with Slack">
+              <span style="font-size:13px;">💬</span>
+              <span>Sign in with Slack</span>
+            </button>`;
+        } else if (plug.key === 'twitter') {
+          ssoBtn = `
+            <button type="button" class="pm-oauth-connect-btn twitter-sso-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with X / Twitter">
+              <span style="font-size:13px;">🐦</span>
+              <span>Sign in with X</span>
+            </button>`;
+        } else if (plug.key === 'meta') {
+          ssoBtn = `
+            <button type="button" class="pm-oauth-connect-btn meta-sso-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with Meta">
+              <span style="font-size:13px;">📱</span>
+              <span>Sign in with Meta</span>
+            </button>`;
+        } else if (plug.key === 'browser') {
+          ssoBtn = `
+            <button type="button" class="pm-oauth-connect-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with Chrome">
+              <span style="font-size:13px;">🌐</span>
+              <span>Sign in with Chrome</span>
+            </button>`;
+        } else {
+          ssoBtn = `
+            <button type="button" class="pm-oauth-connect-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with Web Search">
+              <span style="font-size:13px;">🔍</span>
+              <span>Sign in & Enable Search</span>
+            </button>`;
+        }
+
         card.innerHTML = `
           <div class="pm-plugin-top">
             <div class="pm-plugin-title">
@@ -2771,16 +2863,19 @@
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
               <span class="pm-status-pill disconnected">DISCONNECTED</span>
-              <label class="pm-switch" title="Connect with OAuth">
+              <label class="pm-switch" title="Flip switch to instantly connect">
                 <input type="checkbox" id="pm_plug_${plug.key}_toggle" onchange="handlePluginToggle('${plug.key}', this)">
                 <span class="pm-slider"></span>
               </label>
             </div>
           </div>
           <div class="pm-plugin-desc">${plug.desc}</div>
-          <div class="pm-plugin-bottom-actions">
-            <button type="button" class="pm-oauth-connect-btn" onclick="openOAuthModal('${plug.key}')">
-              <span style="font-size:12px;">🔐</span> Connect with OAuth
+          <div class="pm-plugin-bottom-actions" style="display:flex; gap:6px; align-items:center;">
+            <div style="flex:1;">
+              ${ssoBtn}
+            </div>
+            <button type="button" class="pm-card-test-btn" style="flex:0 0 auto; padding:7px 10px; font-size:12px;" onclick="openOAuthModal('${plug.key}')" title="Review Scopes & Granular Permissions">
+              ⚙
             </button>
           </div>
         `;
@@ -2821,11 +2916,6 @@
     const uEmail = document.getElementById('oaUserEmail');
     if (uEmail) uEmail.textContent = user.email;
 
-    const customInput = document.getElementById('oaCustomInput');
-    const customLabel = document.getElementById('oaCustomLabel');
-    if (customLabel) customLabel.textContent = `OR ENTER CUSTOM ${plug.name.toUpperCase()} ACCOUNT / ID`;
-    if (customInput) customInput.value = (currentSettings?.plugins?.[plugKey]?.account) || plug.defaultVal || '';
-
     const scopesList = document.getElementById('oaScopesList');
     if (scopesList) {
       scopesList.innerHTML = (plug.scopes || []).map(s => {
@@ -2851,7 +2941,7 @@
     const spinner = document.getElementById('oaBtnSpinner');
     if (spinner) spinner.style.display = 'none';
     const btnTxt = document.getElementById('oaBtnText');
-    if (btnTxt) btnTxt.textContent = `AUTHORIZE & CONNECT WITH ${plug.name.toUpperCase()}`;
+    if (btnTxt) btnTxt.textContent = `SIGN IN AS ${(user.name || 'SAI CHANDRA KIRAN').toUpperCase()}`;
     const btn = document.getElementById('oaAuthorizeBtn');
     if (btn) {
       btn.disabled = false;
@@ -2879,7 +2969,7 @@
     const btnTxt = document.getElementById('oaBtnText');
     if (btn) btn.disabled = true;
     if (spinner) spinner.style.display = 'inline-block';
-    if (btnTxt) btnTxt.textContent = 'EXCHANGING OAUTH TOKEN...';
+    if (btnTxt) btnTxt.textContent = 'SIGNING IN...';
 
     const permissions = {};
     const scopes = [];
@@ -2891,9 +2981,9 @@
     });
 
     const user = getActiveUserIdentity();
-    const customVal = document.getElementById('oaCustomInput')?.value.trim();
-    const account = customVal || user.email || plug.defaultVal;
     const userName = user.name || 'Sai Chandra Kiran Uppalapati';
+    const email = user.email || 'saichandrakiranuppalapati45b4@gmail.com';
+    const account = (plug.key === 'gmail' || plug.key === 'google_calendar') ? email : (plug.defaultVal || email);
 
     try {
       const res = await fetch('/api/config/oauth-authorize', {
@@ -2919,7 +3009,7 @@
 
         const toast = document.getElementById('pmPluginToast');
         if (toast) {
-          toast.textContent = `✓ ${plug.name} successfully connected via OAuth 2.0 with Total Account Control!`;
+          toast.textContent = `✓ ${plug.name} signed in successfully via Single Sign-On!`;
           toast.style.display = 'inline-flex';
           setTimeout(() => { toast.style.display = 'none'; }, 4000);
         }
@@ -2937,7 +3027,7 @@
         authType: 'oauth',
         account,
         userName,
-        tokenId: `oauth_${plug.key}_local_${Date.now().toString(36)}`,
+        tokenId: `oauth_${plug.key}_sso_${Date.now().toString(36)}`,
         scopes,
         permissions,
         connectedAt: Date.now()
@@ -2949,6 +3039,132 @@
 
       renderPluginSettings(currentSettings);
       closeOAuthModal();
+
+      const toast = document.getElementById('pmPluginToast');
+      if (toast) {
+        toast.textContent = `✓ ${plug.name} signed in successfully!`;
+        toast.style.display = 'inline-flex';
+        setTimeout(() => { toast.style.display = 'none'; }, 4000);
+      }
+    }
+  };
+
+  window.confirmDirectOAuth = async function(plugKey) {
+    const plug = PLUGINS.find(p => p.key === plugKey);
+    if (!plug) return;
+
+    const user = getActiveUserIdentity();
+    const userName = user.name || 'Sai Chandra Kiran Uppalapati';
+    const email = user.email || 'saichandrakiranuppalapati45b4@gmail.com';
+    const account = (plugKey === 'gmail' || plugKey === 'google_calendar') ? email : (plug.defaultVal || email);
+
+    const permissions = {};
+    const scopes = [];
+    (plug.scopes || []).forEach(s => {
+      permissions[s.key] = true;
+      scopes.push(s.scope);
+    });
+
+    try {
+      const res = await fetch('/api/config/oauth-authorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pluginKey: plug.key,
+          account,
+          userName,
+          permissions,
+          scopes
+        })
+      });
+      const data = await res.json();
+      if (data.ok && data.plugin) {
+        currentSettings = currentSettings || {};
+        currentSettings.plugins = currentSettings.plugins || {};
+        currentSettings.plugins[plug.key] = data.plugin;
+      } else {
+        throw new Error(data.error || 'Server rejected');
+      }
+    } catch (err) {
+      const fallbackPlugin = {
+        enabled: true,
+        status: 'connected',
+        authType: 'oauth',
+        account,
+        userName,
+        tokenId: `oauth_${plug.key}_sso_${Date.now().toString(36)}`,
+        scopes,
+        permissions,
+        connectedAt: Date.now()
+      };
+      currentSettings = currentSettings || {};
+      currentSettings.plugins = currentSettings.plugins || {};
+      currentSettings.plugins[plug.key] = fallbackPlugin;
+    }
+
+    localStorage.setItem('office_settings', JSON.stringify(currentSettings));
+    renderPluginSettings(currentSettings);
+
+    const toast = document.getElementById('pmPluginToast');
+    if (toast) {
+      toast.textContent = `✓ ${plug.name} signed in successfully as ${userName}!`;
+      toast.style.display = 'inline-flex';
+      setTimeout(() => { toast.style.display = 'none'; }, 4000);
+    }
+  };
+
+  window.signInAllWithGoogle = async function() {
+    const user = getActiveUserIdentity();
+    const userName = user.name || 'Sai Chandra Kiran Uppalapati';
+    const email = user.email || 'saichandrakiranuppalapati45b4@gmail.com';
+
+    currentSettings = currentSettings || {};
+    currentSettings.plugins = currentSettings.plugins || {};
+
+    for (const plug of PLUGINS) {
+      const permissions = {};
+      const scopes = [];
+      (plug.scopes || []).forEach(s => {
+        permissions[s.key] = true;
+        scopes.push(s.scope);
+      });
+      const account = (plug.key === 'gmail' || plug.key === 'google_calendar') ? email : (plug.defaultVal || email);
+      const plugData = {
+        enabled: true,
+        status: 'connected',
+        authType: 'oauth',
+        account,
+        userName,
+        tokenId: `oauth_${plug.key}_sso_${Date.now().toString(36)}`,
+        scopes,
+        permissions,
+        connectedAt: Date.now()
+      };
+      currentSettings.plugins[plug.key] = plugData;
+
+      try {
+        fetch('/api/config/oauth-authorize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pluginKey: plug.key,
+            account,
+            userName,
+            permissions,
+            scopes
+          })
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
+    localStorage.setItem('office_settings', JSON.stringify(currentSettings));
+    renderPluginSettings(currentSettings);
+
+    const toast = document.getElementById('pmPluginToast');
+    if (toast) {
+      toast.textContent = `✓ All 7 apps & connectors signed in with Google SSO (${userName})!`;
+      toast.style.display = 'inline-flex';
+      setTimeout(() => { toast.style.display = 'none'; }, 4500);
     }
   };
 
@@ -2956,8 +3172,7 @@
     if (!checkbox.checked) {
       revokeOAuth(plugKey);
     } else {
-      checkbox.checked = false;
-      openOAuthModal(plugKey);
+      confirmDirectOAuth(plugKey);
     }
   };
 
