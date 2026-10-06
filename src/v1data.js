@@ -38,7 +38,14 @@ export const V1 = [
   chartLbl:'Executive directives — last 7 days', chart:[12,15,14,18,16,19,21],
   greeting:`Welcome. I am the Chief Executive. Issue any high-level command or objective here, and my executive team will dispatch it to the appropriate departments, monitor execution, and deliver the final report.`,
   chat:[
+    {k:['hi','hello','hey','greetings','morning','howdy'], r:[`Welcome to Head Table. I am the Chief Executive. How can I assist you with executive operations or department directives today?`,`Hello. I oversee all 6 department pods across the company. What strategic priority shall we focus on?`]},
+    {k:['status','report','overview','how are','progress','kpi','board'], r:[`Executive summary: all 6 department pods are fully staffed and operational. Cross-department SLA compliance is at 100%. We are ready to dispatch work to Operations, Marketing, Sales, Emails, Finance, and Delivery.`]},
+    {k:['who','team','assistants','staff','members'], r:[`At Head Table, I orchestrate operations alongside our Chief of Staff and Exec Operations. We direct 6 specialized department pods across the company.`]},
     {k:['operations','ops','marketing','delegate','how do you'], r:[`When you give a command to the Head Table, we triage the work: marketing tasks go directly to the Marketing team for content and posting; operational directives go to Operations for compliance, review and execution. My assistants walk the deliverables to each pod and synthesize the final report for you.`]},
+  ],
+  fallback:[
+    `I oversee cross-department execution and high-level directives from Head Table. Ask me about office status, pod capabilities, or issue an operational mandate.`,
+    `Try "what is the office status?", "who is on your team?", or dispatch a directive like "Brief all teams on priority objectives today".`
   ],
   chips:['Deploy operational directive','Marketing push overview','Synthesize executive company report']
 },

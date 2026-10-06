@@ -309,6 +309,7 @@ export function initTasks(ctx) {
   };
 
   /* live chat stream helper */
+  const cpHistory = [];
   function addChatMsg(who, text, isUser, dot) {
     const stream = document.getElementById('cpMessages');
     if (!stream) return;
@@ -325,6 +326,7 @@ export function initTasks(ctx) {
     `;
     stream.appendChild(msg);
     stream.scrollTop = stream.scrollHeight;
+    cpHistory.push({ role: isUser ? 'user' : 'assistant', who, text });
   }
 
   // Initial welcome message
@@ -398,17 +400,26 @@ export function initTasks(ctx) {
   P_.dd.addEventListener('click', (e) => { e.stopPropagation(); P_.menu.classList.toggle('on'); });
   document.addEventListener('click', () => P_.menu.classList.remove('on'));
   function setDept(k) {
+    const prev = dept;
     dept = k;
     P_.ddName.textContent = DEPTS[k].short;
     P_.ddDot.style.background = DEPTS[k].chip;
     B_.dept.textContent = DEPTS[k].name.toUpperCase(); B_.dot.style.background = DEPTS[k].chip;
-    P_.input.placeholder = `Type a task or command for ${DEPTS[k].name.toLowerCase()}…`;
+    P_.input.placeholder = `Chat with ${DEPTS[k].name.toLowerCase()} or assign a task…`;
     updateHint();
     const cpScope = document.getElementById('cpScope');
     if (cpScope) {
       cpScope.textContent = DEPTS[k].name.toUpperCase();
       cpScope.style.borderColor = DEPTS[k].chip;
       cpScope.style.color = DEPTS[k].chip;
+    }
+    if (prev && prev !== k) {
+      const L = leadOf(k);
+      if (k === 'ceo') {
+        addChatMsg(L.name, `Welcome to Head Table. Directives entered here are routed through the Executive Office and dispatched across all departments.`, false, DEPTS.ceo.chip);
+      } else {
+        addChatMsg(L.name, `Connected to ${DEPTS[k].name}. Chat with me directly or assign tasks for our pod.`, false, DEPTS[k].chip);
+      }
     }
   }
   setDept('ceo');
@@ -423,6 +434,167 @@ export function initTasks(ctx) {
     }
     return { agent: best, matched: bestN > 0 };
   }
+
+  function isChatIntent(text) {
+    if (!text) return false;
+    const t = text.trim();
+    const low = t.toLowerCase();
+
+    // Explicit task commands or directive prefixes are ALWAYS tasks
+    if (/^\s*(?:task|directive|todo|assign|dispatch|mandate|order|run\s+task|new\s+task|add\s+task)\s*[:\-–—]?\s+/i.test(t)) {
+      return false;
+    }
+
+    // Explicit team commands or asTeam toggle
+    if (teamOn || /\b(as a team|with the team|whole team|whole department|split it across)\b/i.test(low)) {
+      return false;
+    }
+
+    // Common greetings
+    if (/^(hi|hello|hey|yo|greetings|howdy|sup|good\s+(?:morning|afternoon|evening|day)|bonjour|hola)\b/i.test(low)) {
+      return true;
+    }
+
+    // Small talk / well-being
+    if (/^(how\s+are\s+you|how\s+is\s+it\s+going|how's\s+it\s+going|how\s+do\s+you\s+do|what's\s+up|what\s+up|how's\s+your\s+day|how\s+are\s+things)\b/i.test(low)) {
+      return true;
+    }
+
+    // Identity, role, and capabilities questions
+    if (/^(who\s+are\s+you|what\s+is\s+your\s+role|what\s+do\s+you\s+do|what\s+are\s+your\s+capabilities|what\s+can\s+you\s+do|what\s+can\s+head\s+table\s+do|what\s+is\s+this\s+office|introduce\s+yourself|help|capabilities|info|about)\b/i.test(low)) {
+      return true;
+    }
+
+    // Team & department roster questions
+    if (/\b(?:who\s+is\s+on\s+your\s+team|who\s+works\s+here|who\s+is\s+in\s+this\s+department|tell\s+me\s+about\s+(?:your\s+)?team|who\s+are\s+the\s+agents|team\s+members|who\s+is\s+at\s+head\s+table)\b/i.test(low)) {
+      return true;
+    }
+
+    // Status and overview inquiries
+    if (/^(?:status|update|overview|report|summary|what's\s+the\s+status|what\s+is\s+the\s+status|how\s+are\s+we\s+doing|what's\s+happening|what\s+are\s+you\s+working\s+on|what\s+are\s+we\s+working\s+on|what's\s+on\s+the\s+board|board)\b/i.test(low)) {
+      return true;
+    }
+
+    // General conversational questions starting with question words
+    if (/^(?:what\s+is|what's|where|when|why|how\s+does|how\s+do|how\s+can|tell\s+me|explain|describe)\b/i.test(low)) {
+      return true;
+    }
+
+    // Polite inquiry questions
+    if (/^(?:can\s+you\s+(?:explain|tell|describe|clarify|help)|could\s+you\s+(?:explain|tell|describe|clarify|help)|do\s+you\s+know|is\s+there|are\s+there)\b/i.test(low)) {
+      return true;
+    }
+
+    // Casual appreciation / remarks
+    if (/^(?:thanks|thank\s+you|awesome|great|good\s+job|cool|nice|ok|okay|got\s+it|understood)\b/i.test(low)) {
+      return true;
+    }
+
+    // Any sentence ending with '?' that isn't a direct imperative task instruction
+    if (/\?\s*$/.test(t) && !/^(?:can\s+you|could\s+you|please)\s+(?:create|send|draft|build|deploy|write|compile|launch|audit|run)/i.test(low)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function generateLeadChatReply(k, text, lead) {
+    const low = text.toLowerCase().trim();
+    const leadName = lead?.name || 'Department Lead';
+    const deptName = DEPTS[k]?.name || k;
+    const agents = AGENTS.filter(a => a.dept === k);
+
+    // 1. Status / Progress / Board inquiries
+    if (/^(?:status|update|overview|report|summary|how\s+are\s+we\s+doing|what's\s+the\s+status|what\s+is\s+the\s+status|what's\s+happening|what\s+are\s+you\s+working\s+on|what\s+are\s+we\s+working\s+on|board)\b/i.test(low)) {
+      if (k === 'ceo') {
+        const activeDoing = tasks.filter(t => t.state === 'doing');
+        const activeNext = tasks.filter(t => t.state === 'next');
+        const totalDone = Object.values(doneCount).reduce((a, b) => a + b, 0);
+        const doingSummary = activeDoing.slice(0, 3).map(t => `"${t.title}" (${agentOf(t.agent)?.name || t.agent})`).join(', ');
+        return `Executive Briefing for Head Table:\n• Active in progress: ${activeDoing.length} task(s)${doingSummary ? ` [${doingSummary}]` : ''}\n• Queued in backlog: ${activeNext.length} task(s)\n• Deliverables completed today: ${totalDone}\nAll 6 operational departments are active and synchronized. Let me know if you wish to dispatch a new directive.`;
+      } else {
+        const myDoing = deptTasks(k, 'doing');
+        const myNext = deptTasks(k, 'next');
+        const myDone = doneCount[k] || 0;
+        const doingSummary = myDoing.slice(0, 2).map(t => `"${t.title}" (${agentOf(t.agent)?.name || t.agent})`).join(', ');
+        return `${deptName} Status Report:\n• In progress: ${myDoing.length} task(s)${doingSummary ? ` [${doingSummary}]` : ''}\n• Backlog queue: ${myNext.length} task(s)\n• Completed today: ${myDone}\nOur specialist team is operating at full speed.`;
+      }
+    }
+
+    // 2. Team / Roster / Who is here inquiries
+    if (/\b(?:who\s+is\s+on\s+your\s+team|who\s+works\s+here|who\s+is\s+in\s+this\s+department|tell\s+me\s+about\s+(?:your\s+)?team|who\s+are\s+the\s+agents|team\s+members|who\s+is\s+at\s+head\s+table)\b/i.test(low)) {
+      if (k === 'ceo') {
+        return `At Head Table, I orchestrate operations alongside our Chief of Staff and Exec Operations. We coordinate execution across 6 department pods:\n• Inbox & Emails (Elena & team)\n• Sales & Pipeline (Lexi & team)\n• Growth & Marketing (Marcus & team)\n• Operations & SOP (Oliver & team)\n• Finance & Invoices (Fiona & team)\n• Delivery & QA (David & team)\nYou can select any pod from the dropdown to speak with their lead.`;
+      } else {
+        const memberList = agents.map(a => `• ${a.name}: ${a.role || (a.lead ? 'Department Lead' : 'Specialist')}`).join('\n');
+        return `Here is our team in ${deptName}:\n${memberList}\nEach agent specializes in specific stages of our workflow.`;
+      }
+    }
+
+    // 3. Capabilities / What can you do / Help
+    if (/^(?:who\s+are\s+you|what\s+is\s+your\s+role|what\s+do\s+you\s+do|what\s+are\s+your\s+capabilities|what\s+can\s+you\s+do|what\s+can\s+head\s+table\s+do|what\s+is\s+this\s+office|help|capabilities|info|about)\b/i.test(low)) {
+      if (k === 'ceo') {
+        return `I am the Chief Executive at Head Table. My capabilities include:\n1. Executive Triage: Dispatch high-level directives across Marketing, Operations, and all pods.\n2. Cross-Pod Coordination: Align multiple teams on unified campaigns, audits, or briefings.\n3. Executive Oversight: Live status updates across all tasks, backlogs, and deliverables.\nYou can chat with me freely or issue an operational directive at any time.`;
+      } else if (k === 'emails') {
+        return `I lead Inbox & Emails. We manage all incoming and outgoing correspondence:\n• Client Communications: Triage, draft responses, and kickoff summaries.\n• Internal Mail: Team scheduling, memos, and briefings.\n• Vendor & Contractor Mail: SLA tracking, quote requests, and hours verification.`;
+      } else if (k === 'marketing') {
+        return `I lead Growth & Marketing. We drive customer acquisition and brand presence:\n• Paid Ads: Meta and Google ad creative, budget tracking, and performance audits.\n• Social & Video: Content calendars, Instagram hooks, and HyperFrames video editing.\n• Newsletters & Creative: Monthly email campaigns and design assets.`;
+      } else if (k === 'ops') {
+        return `I lead Operations & SOP. We ensure organizational rigor and compliance:\n• Regulatory & Legal: Compliance monitoring, contract terms, and clause reviews.\n• Company SOPs: Operational playbooks and procedure documentation.\n• Executive Reporting: Board packs and KPI syntheses.`;
+      } else if (k === 'sales') {
+        return `I lead Sales & Pipeline. We generate and convert revenue:\n• Inbound & Outbound: Lead enrichment, ICP qualification, and prospect mining.\n• Deal Management: Pipeline reviews, proposal tracking, and stale deal revival.`;
+      } else if (k === 'fin') {
+        return `I lead Finance & Invoices. We govern financial integrity:\n• Billing & Collections: Invoice generation, overdue accounts, and DSO management.\n• Payables & Reconciliation: Vendor invoice verification, duplicate checks, and bank reconciliation.`;
+      } else if (k === 'delivery') {
+        return `I lead Delivery & QA. We ensure flawless client execution:\n• Project Oversight: Milestone management, timeline adherence, and capacity planning.\n• Quality Assurance: Pre-flight checks, client sign-offs, and reporting packs.`;
+      }
+    }
+
+    // 4. Greetings
+    if (/^(?:hi|hello|hey|yo|greetings|howdy|sup|good\s+(?:morning|afternoon|evening|day)|bonjour|hola)\b/i.test(low)) {
+      if (k === 'ceo') {
+        return `Hello! I am the Chief Executive. Welcome to Head Table. I oversee all 6 department pods across the office. How can I assist you today? You can ask for a status report, discuss operations, or issue an executive directive.`;
+      } else if (k === 'emails') {
+        return `Hello! Elena here at Inbox & Emails. We're actively managing client communications and inbox flows. What can I help you with today?`;
+      } else if (k === 'marketing') {
+        return `Hey there! Marcus here at Growth & Marketing. Our ad campaigns, social queue, and content workflows are running. What's on your mind?`;
+      } else if (k === 'ops') {
+        return `Hello! Oliver here for Operations & SOP. Keeping all systems, compliance standards, and workflows aligned. How can I help?`;
+      } else if (k === 'sales') {
+        return `Hi! Lexi here at Sales & Pipeline. Deal flow and lead enrichment are active today. How can I assist you?`;
+      } else if (k === 'fin') {
+        return `Hello! Fiona here at Finance & Invoices. I oversee billing, payouts, and ledger reconciliation. What do you need today?`;
+      } else if (k === 'delivery') {
+        return `Hello! David here at Delivery & QA. All active client deliverables and quality gates are on schedule. How can I assist you?`;
+      }
+    }
+
+    // 5. Small talk: "How are you", "How's it going", "Thanks"
+    if (/^(?:how\s+are\s+you|how\s+is\s+it\s+going|how's\s+it\s+going|how\s+are\s+things|how's\s+your\s+day)\b/i.test(low)) {
+      if (k === 'ceo') {
+        return `Operating at peak efficiency. All 6 department pods are reporting green across their SLAs. How is everything on your side?`;
+      }
+      return `Doing great, thank you! The ${deptName} pod is running smoothly and focused on our deliverables. How can we support you today?`;
+    }
+    if (/^(?:thanks|thank\s+you|awesome|great\s+job|good\s+work|cool|nice)\b/i.test(low)) {
+      return `You're very welcome! The team and I are here whenever you need anything. Just say the word.`;
+    }
+
+    // 6. Check v1.chat patterns for this lead or department
+    const leadV1 = R[lead?.id]?.v1;
+    if (leadV1?.chat) {
+      const hit = leadV1.chat.find(c => c.k.some(kw => low.includes(kw)));
+      if (hit) return rnd(hit.r);
+    }
+
+    // 7. Contextual intelligent fallback
+    if (k === 'ceo') {
+      return `Understood. As Chief Executive, I can coordinate this across our departments. Would you like me to dispatch this as an operational directive to Marketing & Operations, or drill into specific details first?`;
+    } else {
+      return `Received. In ${deptName}, we can take action on this or review existing workflows. Feel free to give me a specific task or let me know how you'd like to proceed.`;
+    }
+  }
+
   function updateHint() {
     grow();
     const text = P_.input.value.trim();
@@ -442,8 +614,15 @@ export function initTasks(ctx) {
       P_.hint.innerHTML = `<span class="tp-av" style="border-color:${chip};background:${chip}55">⚑</span>Team · <b>${L.name}</b> splits it across up to ${teamsCfg.max} desks, they work at the same time, the lead writes the final` + pickBit('task');
       P_.hint.className = 'tp-hint on'; return;
     }
+    const L = leadOf(dept);
+    if (isChatIntent(text)) {
+      const chip = DEPTS[dept]?.chip || '#6366F1';
+      P_.hint.innerHTML = `<span class="tp-av" style="border-color:${chip};background:${chip}55">💬</span>Chat with <b>${L.name}</b> · press Enter to send`;
+      P_.hint.className = 'tp-hint on';
+      return;
+    }
     const { agent: a, matched } = route(dept, text);
-    const busy = agentTasks(a.id, 'doing').length > 0 || R[a.id].state === 'stuck';
+    const busy = agentTasks(a.id, 'doing').length > 0 || R[a.id]?.state === 'stuck';
     const chip = DEPTS[a.dept].chip;
     P_.hint.innerHTML = `<span class="tp-av" style="border-color:${chip};background:${chip}55">${a.name[0]}</span>` +
       (live ? `Probably <b>${a.name}</b> · Claude confirms when you press Add`
@@ -467,18 +646,73 @@ export function initTasks(ctx) {
   B_.close.addEventListener('click', closeBig);
   big.addEventListener('click', (e) => { if (e.target === big) closeBig(); });
   function say(html, cls) { P_.hint.innerHTML = html; P_.hint.className = 'tp-hint on' + (cls ? ' ' + cls : ''); grow(); if (big.classList.contains('on')) mirrorHint(); }
+
+  async function handleLeadChat(k, lead, title) {
+    say(`<b>${lead.name}</b> is typing…`, 'busy');
+    if (live) {
+      P_.input.disabled = true; P_.add.disabled = true;
+      try {
+        const u = JSON.parse(localStorage.getItem('office_user') || '{}');
+        const res = await fetch(API + '/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            agent: lead.id,
+            text: title,
+            history: cpHistory.filter(m => m.role === 'user' || m.role === 'assistant').slice(-8),
+            user_id: u.id || undefined
+          })
+        });
+        if (res.ok) {
+          const j = await res.json();
+          if (j.reply) {
+            addChatMsg(lead.name, j.reply, false, DEPTS[k]?.chip);
+            say(`Replied — <b>${lead.name}</b>`);
+            setTimeout(updateHint, 2500);
+            P_.input.disabled = false; P_.add.disabled = false; P_.input.focus();
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Live chat fallback to local persona:', e);
+      }
+      P_.input.disabled = false; P_.add.disabled = false;
+    }
+
+    // Local / Offline / Cloudflare Pages / Demo persona engine fallback:
+    await new Promise(r => setTimeout(r, 320));
+    const reply = generateLeadChatReply(k, title, lead);
+    addChatMsg(lead.name, reply, false, DEPTS[k]?.chip);
+    say(`Replied — <b>${lead.name}</b>`);
+    setTimeout(updateHint, 2500);
+    P_.input.focus();
+  }
+
   async function submit() {
     let title = P_.input.value.trim().replace(/[.!]+$/, '');
     if (!title) return;
     big.classList.remove('on');
     title = title.charAt(0).toUpperCase() + title.slice(1);
     addChatMsg('You', title, true);
+    P_.input.value = '';
+    grow();
+
     const rt = routineIntent(title);
     if (rt) { await submitRoutine(rt, title); return; }
+
+    const lead = leadOf(dept);
+
+    // Conversational Chat with the Department Lead:
+    if (isChatIntent(title)) {
+      await handleLeadChat(dept, lead, title);
+      return;
+    }
+
+    // Actionable Directive / Task:
     if (live) {
       const text = title, k = dept;
       const mdl = chosenModel();
-      P_.input.value = ''; P_.input.disabled = true; P_.add.disabled = true;
+      P_.input.disabled = true; P_.add.disabled = true;
       const team = asTeam(text);
       say(team ? `Routing through Claude — <b>${leadOf(k).name}</b> is reading it for the team…` : `Routing through Claude — ${DEPTS[k].name.toLowerCase()} is reading it…`, 'busy');
       try {
@@ -494,7 +728,7 @@ export function initTasks(ctx) {
           t.delegated = st.delegated;
           const targetDepts = [...new Set(st.delegated.map(d => d.dept))];
           say(`Added — <b>Head Table</b> dispatched directive to ${targetDepts.map(d => DEPTS[d]?.name || d).join(' & ')}`);
-          addChatMsg('Head Table', `Directive dispatched to ${targetDepts.map(d => DEPTS[d]?.name || d).join(' & ')}. Tracking in real time.`, false, '#2563eb');
+          addChatMsg(lead.name, `Directive acknowledged: "${st.title || title}". Dispatched to ${targetDepts.map(d => DEPTS[d]?.name || d).join(' & ')}. Tracking execution in real time.`, false, DEPTS[k]?.chip);
           if (window.dispatchCeoMission) window.dispatchCeoMission(targetDepts, st.title);
           for (const d of st.delegated) {
             const childT = mk({ agent: d.agent, dept: d.dept, title: d.title, text: d.text, by: 'ceo', live: true, sid: d.id, parent: t.id });
@@ -503,17 +737,18 @@ export function initTasks(ctx) {
           }
         } else {
           say(st.team ? `Added — <b>${agentOf(t.agent).name}</b> has it and is splitting it across the team` : `Added — <b>${agentOf(t.agent).name}</b> has it${st.why ? ' · ' + esc(st.why) : ''}`);
-          addChatMsg(st.agent ? (agentOf(st.agent)?.name || st.agent) : DEPTS[k].name, `Task assigned: "${st.title || title}". Working on it.`, false, DEPTS[k]?.chip);
+          addChatMsg(lead.name, `Task assigned: "${st.title || title}". Routed to ${agentOf(t.agent)?.name || 'specialist'}. Work is underway.`, false, DEPTS[k]?.chip);
         }
         setTimeout(() => { if (!P_.input.value) P_.hint.classList.remove('on'); }, 7000);
       } catch (e) {
         say(`Claude couldn't take it (${esc(e.message)}). Kept it on the board.`, 'err');
-        addChatMsg('Office Dispatch', `Failed to dispatch: ${e.message}`, false, '#ef4444');
+        addChatMsg(lead.name, `Failed to dispatch via Claude (${e.message}). Saved to board.`, false, '#ef4444');
         const { agent: a } = route(k, text); addTask(a.id, text, 'you');
       }
-      P_.input.disabled = false; P_.add.disabled = false; P_.input.blur(); // hand the keys back to the office
+      P_.input.disabled = false; P_.add.disabled = false; P_.input.blur();
       return;
     }
+
     if (dept === 'ceo') {
       const low = title.toLowerCase();
       const targets = [];
@@ -536,28 +771,28 @@ export function initTasks(ctx) {
         }
         if (window.dispatchCeoMission) window.dispatchCeoMission(targets, title);
         say(`Added — <b>CEO</b> dispatched work to ${targets.map(d => DEPTS[d]?.name || d).join(' & ')}.`);
-        addChatMsg('Head Table', `CEO dispatched directive to ${targets.map(d => DEPTS[d]?.name || d).join(' & ')}.`, false, '#2563eb');
+        addChatMsg(lead.name, `Directive acknowledged: "${title}". Dispatched operational mandates to ${targets.map(d => DEPTS[d]?.name || d).join(' & ')} for immediate execution.`, false, DEPTS.ceo.chip);
         setTimeout(updateHint, 3200); P_.input.blur();
-        resetModel(); P_.input.value = '';
+        resetModel();
         return;
       }
     }
-    if (asTeam(title)) { // demo: the lead + two or three desks, all at once, the lead finishes when the pieces are in
+    if (asTeam(title)) {
       const t = addTeamDemo(dept, title);
       const mdl = chosenModel(); t.modelUsed = mdl || officeModel; t.modelFrom = mdl ? 'task' : 'office'; const ef = effortUsedFor(t.modelUsed); t.effortUsed = ef.effort || ''; t.effortFrom = ef.from;
-      resetModel(); resetTeam(); P_.input.value = ''; updateHint();
+      resetModel(); resetTeam(); updateHint();
       say(`Added — <b>${agentOf(t.agent).name}</b> has it with ${esc(membersText(t))}.`); setTimeout(updateHint, 3200); P_.input.blur();
-      addChatMsg(leadOf(dept).name, `Team task assigned to ${membersText(t)}.`, false, DEPTS[dept]?.chip);
+      addChatMsg(lead.name, `Team task assigned: "${title}". Splitting across ${membersText(t)} and myself.`, false, DEPTS[dept]?.chip);
       return;
     }
     const { agent: a } = route(dept, title);
     const t = addTask(a.id, title, 'you');
     if (t) { const mdl = chosenModel(); t.modelUsed = mdl || officeModel; t.modelFrom = mdl ? 'task' : 'office'; const ef = effortUsedFor(t.modelUsed); t.effortUsed = ef.effort || ''; t.effortFrom = ef.from; }
     resetModel();
-    P_.input.value = ''; updateHint();
+    updateHint();
     if (t) {
       say(`Added — <b>${a.name}</b> has it.`);
-      addChatMsg(a.name, `Assigned "${title}". Starting task.`, false, DEPTS[a.dept]?.chip);
+      addChatMsg(lead.name, `Task assigned: "${title}". Routed to ${a.name} in ${DEPTS[a.dept].name}. Work is underway.`, false, DEPTS[dept]?.chip);
       setTimeout(updateHint, 2600); P_.input.blur();
     }
     else say(`<b>${a.name}</b> already has five queued — let one finish first.`);

@@ -1181,6 +1181,7 @@
   .cp-msg-body {
     font-family: var(--ui); font-size: 12px; line-height: 1.45;
     border-radius: 14px; padding: 8px 12px; word-break: break-word;
+    white-space: pre-wrap;
   }
   .cp-msg.user .cp-msg-body {
     background: var(--ink); color: var(--cream); border-bottom-right-radius: 3px;
@@ -2115,6 +2116,7 @@
   </div>
   <div class="cp-stream" id="cpMessages"></div>
   <div class="cp-quick-prompts" id="cpQuickPrompts">
+    <button type="button" class="cp-chip" data-text="What is the current status of the office?">Office status</button>
     <button type="button" class="cp-chip" data-text="Brief all teams on priority objectives today">Brief all teams</button>
     <button type="button" class="cp-chip" data-text="Review active marketing campaign performance">Marketing review</button>
     <button type="button" class="cp-chip" data-text="Check pending client proposals and deliverables">Delivery check</button>
@@ -2123,7 +2125,7 @@
     <div class="tp-r1">
       <button class="tp-dd" title="department"><span class="dot"></span><span class="tp-ddn">HEAD TABLE</span></button>
       <div class="tp-menu"></div>
-      <textarea class="tp-in" rows="1" placeholder="Type a task or command for head table…" autocomplete="off" spellcheck="false"></textarea>
+      <textarea class="tp-in" rows="1" placeholder="Chat with head table or assign a task…" autocomplete="off" spellcheck="false"></textarea>
       <button class="tp-big-btn" title="open the big editor (⌘⇧E)">⤢</button>
     </div>
     <div class="tp-r2">
