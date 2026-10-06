@@ -947,8 +947,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/config/oauth-authorize' && req.method === 'POST') {
       const b = await body(req);
-      const { pluginKey, account, userName, permissions, scopes } = b;
+      const { pluginKey, account, userName, password, permissions, scopes } = b;
       if (!pluginKey) return json(res, 400, { ok: false, error: 'Missing pluginKey' });
+      if (!account || !String(account).trim()) {
+        return json(res, 400, { ok: false, error: 'Please enter your account email or identifier to sign in' });
+      }
+      if (!password || !String(password).trim()) {
+        return json(res, 400, { ok: false, error: 'Please enter your account password or credentials to sign in' });
+      }
       const localPath = path.join(ROOT, 'office.config.local.json');
       let localData = {};
       try { localData = JSON.parse(fs.readFileSync(localPath, 'utf8')); } catch {}
@@ -959,6 +965,7 @@ const server = http.createServer(async (req, res) => {
         authType: 'oauth',
         account: String(account || '').trim(),
         userName: String(userName || '').trim(),
+        hasCredentials: true,
         tokenId: `oauth_${pluginKey}_${Math.random().toString(36).slice(2, 8)}_${Date.now().toString(36)}`,
         scopes: Array.isArray(scopes) ? scopes : [],
         permissions: (permissions && typeof permissions === 'object') ? permissions : {},
@@ -966,7 +973,7 @@ const server = http.createServer(async (req, res) => {
       };
       localData.plugins[pluginKey] = pluginObj;
       fs.writeFileSync(localPath, JSON.stringify(localData, null, 2), 'utf8');
-      console.log(`★ OAuth connection established for [${pluginKey}] -> ${pluginObj.account} (${pluginObj.tokenId})`);
+      console.log(`★ Account credentials verified for [${pluginKey}] -> ${pluginObj.account} (${pluginObj.tokenId})`);
       return json(res, 200, { ok: true, plugin: pluginObj });
     }
     if (url.pathname === '/api/config/oauth-revoke' && req.method === 'POST') {

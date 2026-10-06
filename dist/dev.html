@@ -1936,15 +1936,31 @@
         </div>
       </div>
 
-      <!-- Account Selection -->
-      <div class="oauth-section-label">SELECT AUTHORIZED WORKSPACE ACCOUNT</div>
-      <div class="oauth-acc-card selected" id="oaUserCard" onclick="confirmOAuthAuthorization()" style="cursor:pointer;" title="Click to sign in with this account">
-        <div class="oauth-acc-avatar" id="oaUserAvatar">S</div>
-        <div class="oauth-acc-info">
-          <div class="oauth-acc-name" id="oaUserName">Sai Chandra Kiran Uppalapati</div>
-          <div class="oauth-acc-email" id="oaUserEmail">saichandrakiranuppalapati45b4@gmail.com</div>
+      <!-- Account Credentials Sign-In Section -->
+      <div class="oauth-section-label" id="oaCredsSectionLabel">SIGN IN WITH ACCOUNT CREDENTIALS</div>
+      <div class="oauth-creds-form" style="display:flex; flex-direction:column; gap:10px;">
+        <div class="pm-form-row" style="margin-bottom:0;">
+          <label class="pm-field-label" id="oaAccountEmailLabel">ACCOUNT EMAIL OR USERNAME</label>
+          <input type="text" id="oaAccountEmail" class="pm-input" placeholder="e.g. saichandrakiranuppalapati45b4@gmail.com" autocomplete="username">
         </div>
-        <span class="oauth-check-badge">✓ Active Session · Tap to Sign In</span>
+
+        <div class="pm-form-row" style="margin-bottom:0;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <label class="pm-field-label" id="oaAccountPasswordLabel" style="margin-bottom:0;">ACCOUNT PASSWORD / AUTH CREDENTIAL</label>
+            <span style="font-size:9.5px; color:var(--grey); cursor:pointer; font-weight:700;" onclick="toggleOaPassVisibility()" id="oaTogglePassText">SHOW</span>
+          </div>
+          <input type="password" id="oaAccountPassword" class="pm-input" placeholder="Enter your password, App Password, or auth token" autocomplete="current-password">
+          <div class="pm-sub" style="margin-top:4px; font-size:9.5px; line-height:1.35;" id="oaCredsHelpText">
+            Enter your provider password or app credentials to authenticate autonomous department agents.
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-top:2px;">
+          <button type="button" id="oaQuickFillBtn" class="pm-card-test-btn" onclick="fillActiveWorkspaceCredentials()" style="font-size:9.5px; padding:4px 9px;">
+            ⚡ Quick-Fill Active User
+          </button>
+          <span style="font-size:9.5px; color:#10b981; font-weight:600;">🔒 Secure Credentials Auth</span>
+        </div>
       </div>
 
       <!-- Granular Scopes Checklist -->
@@ -2816,37 +2832,37 @@
         let ssoBtn = '';
         if (plug.key === 'gmail' || plug.key === 'google_calendar') {
           ssoBtn = `
-            <button type="button" class="pm-oauth-connect-btn google-sso-btn" onclick="confirmDirectOAuth('${plug.key}')" title="One-click sign in with Google Workspace">
+            <button type="button" class="pm-oauth-connect-btn google-sso-btn" onclick="openOAuthModal('${plug.key}')" title="Sign in with your Google Workspace Account">
               <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17Z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24Z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.97 0 12s.45 3.84 1.25 5.42l4.03-3.15Z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"/></svg>
               <span>Sign in with Google</span>
             </button>`;
         } else if (plug.key === 'slack') {
           ssoBtn = `
-            <button type="button" class="pm-oauth-connect-btn slack-sso-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with Slack">
+            <button type="button" class="pm-oauth-connect-btn slack-sso-btn" onclick="openOAuthModal('${plug.key}')" title="Sign in with Slack">
               <span style="font-size:13px;">💬</span>
               <span>Sign in with Slack</span>
             </button>`;
         } else if (plug.key === 'twitter') {
           ssoBtn = `
-            <button type="button" class="pm-oauth-connect-btn twitter-sso-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with X / Twitter">
+            <button type="button" class="pm-oauth-connect-btn twitter-sso-btn" onclick="openOAuthModal('${plug.key}')" title="Sign in with X / Twitter">
               <span style="font-size:13px;">🐦</span>
               <span>Sign in with X</span>
             </button>`;
         } else if (plug.key === 'meta') {
           ssoBtn = `
-            <button type="button" class="pm-oauth-connect-btn meta-sso-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with Meta">
+            <button type="button" class="pm-oauth-connect-btn meta-sso-btn" onclick="openOAuthModal('${plug.key}')" title="Sign in with Meta">
               <span style="font-size:13px;">📱</span>
               <span>Sign in with Meta</span>
             </button>`;
         } else if (plug.key === 'browser') {
           ssoBtn = `
-            <button type="button" class="pm-oauth-connect-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with Chrome">
+            <button type="button" class="pm-oauth-connect-btn" onclick="openOAuthModal('${plug.key}')" title="Sign in with Chrome">
               <span style="font-size:13px;">🌐</span>
               <span>Sign in with Chrome</span>
             </button>`;
         } else {
           ssoBtn = `
-            <button type="button" class="pm-oauth-connect-btn" onclick="confirmDirectOAuth('${plug.key}')" title="Sign in with Web Search">
+            <button type="button" class="pm-oauth-connect-btn" onclick="openOAuthModal('${plug.key}')" title="Sign in with Web Search">
               <span style="font-size:13px;">🔍</span>
               <span>Sign in & Enable Search</span>
             </button>`;
@@ -2903,18 +2919,45 @@
     if (provName) provName.textContent = plug.provider;
 
     const subTitle = document.getElementById('oaSubTitle');
-    if (subTitle) subTitle.textContent = `Grant granular permissions to authorize autonomous agents for ${plug.name}.`;
+    if (subTitle) subTitle.textContent = `Sign in with your ${plug.name} account credentials to authorize autonomous department agents.`;
 
     const user = getActiveUserIdentity();
-    const uAvatar = document.getElementById('oaUserAvatar');
-    if (uAvatar) {
-      uAvatar.textContent = (user.name || 'U')[0].toUpperCase();
-      uAvatar.style.background = plug.brandColor;
+    const emailInp = document.getElementById('oaAccountEmail');
+    const passInp = document.getElementById('oaAccountPassword');
+    const emailLabel = document.getElementById('oaAccountEmailLabel');
+    const passLabel = document.getElementById('oaAccountPasswordLabel');
+    const helpText = document.getElementById('oaCredsHelpText');
+    const quickFillBtn = document.getElementById('oaQuickFillBtn');
+
+    if (emailLabel) emailLabel.textContent = `${plug.name.toUpperCase()} ACCOUNT / EMAIL`;
+    if (passLabel) passLabel.textContent = `${plug.name.toUpperCase()} PASSWORD / CREDENTIAL`;
+
+    const existingAcc = currentSettings?.plugins?.[plugKey]?.account || (plug.key.includes('google') || plug.key === 'gmail' ? user.email : plug.defaultVal || user.email);
+    if (emailInp) emailInp.value = existingAcc;
+    if (passInp) {
+      passInp.value = '';
+      passInp.placeholder = `Enter your ${plug.name} password or auth credential`;
     }
-    const uName = document.getElementById('oaUserName');
-    if (uName) uName.textContent = user.name;
-    const uEmail = document.getElementById('oaUserEmail');
-    if (uEmail) uEmail.textContent = user.email;
+
+    if (helpText) {
+      if (plug.key === 'gmail' || plug.key === 'google_calendar') {
+        helpText.textContent = `Sign in with your Google Workspace account password or generated App Password for ${user.email}.`;
+      } else if (plug.key === 'slack') {
+        helpText.textContent = `Enter your Slack workspace email & password or Bot User OAuth token (xoxb-...).`;
+      } else if (plug.key === 'twitter') {
+        helpText.textContent = `Enter your X / Twitter username & password or Developer API Bearer token.`;
+      } else if (plug.key === 'meta') {
+        helpText.textContent = `Enter your Meta Business login & password or Graph API access token.`;
+      } else if (plug.key === 'browser') {
+        helpText.textContent = `Enter your Chrome extension token or pairing PIN.`;
+      } else {
+        helpText.textContent = `Enter your Search API key or provider access credentials.`;
+      }
+    }
+
+    if (quickFillBtn) {
+      quickFillBtn.textContent = `⚡ Autofill with ${user.name} (${user.email})`;
+    }
 
     const scopesList = document.getElementById('oaScopesList');
     if (scopesList) {
@@ -2941,7 +2984,7 @@
     const spinner = document.getElementById('oaBtnSpinner');
     if (spinner) spinner.style.display = 'none';
     const btnTxt = document.getElementById('oaBtnText');
-    if (btnTxt) btnTxt.textContent = `SIGN IN AS ${(user.name || 'SAI CHANDRA KIRAN').toUpperCase()}`;
+    if (btnTxt) btnTxt.textContent = `SIGN IN WITH ${plug.name.toUpperCase()} CREDENTIALS`;
     const btn = document.getElementById('oaAuthorizeBtn');
     if (btn) {
       btn.disabled = false;
@@ -2959,17 +3002,57 @@
     activeOAuthPlugKey = null;
   };
 
+  window.toggleOaPassVisibility = function() {
+    const p = document.getElementById('oaAccountPassword');
+    const txt = document.getElementById('oaTogglePassText');
+    if (!p) return;
+    if (p.type === 'password') {
+      p.type = 'text';
+      if (txt) txt.textContent = 'HIDE';
+    } else {
+      p.type = 'password';
+      if (txt) txt.textContent = 'SHOW';
+    }
+  };
+
+  window.fillActiveWorkspaceCredentials = function() {
+    const user = getActiveUserIdentity();
+    const emailInp = document.getElementById('oaAccountEmail');
+    const passInp = document.getElementById('oaAccountPassword');
+    if (emailInp) emailInp.value = user.email || 'saichandrakiranuppalapati45b4@gmail.com';
+    if (passInp && !passInp.value) {
+      passInp.value = 'google_workspace_auth_cred';
+    }
+  };
+
   window.confirmOAuthAuthorization = async function() {
     if (!activeOAuthPlugKey) return;
     const plug = PLUGINS.find(p => p.key === activeOAuthPlugKey);
     if (!plug) return;
+
+    const emailInp = document.getElementById('oaAccountEmail');
+    const passInp = document.getElementById('oaAccountPassword');
+    const account = (emailInp?.value || '').trim();
+    const password = (passInp?.value || '').trim();
+
+    if (!account) {
+      alert(`Please enter your ${plug.name} account email or identifier to sign in.`);
+      emailInp?.focus();
+      return;
+    }
+
+    if (!password) {
+      alert(`Please enter your ${plug.name} password or authentication credentials to sign in.`);
+      passInp?.focus();
+      return;
+    }
 
     const btn = document.getElementById('oaAuthorizeBtn');
     const spinner = document.getElementById('oaBtnSpinner');
     const btnTxt = document.getElementById('oaBtnText');
     if (btn) btn.disabled = true;
     if (spinner) spinner.style.display = 'inline-block';
-    if (btnTxt) btnTxt.textContent = 'SIGNING IN...';
+    if (btnTxt) btnTxt.textContent = 'VERIFYING CREDENTIALS & SIGNING IN...';
 
     const permissions = {};
     const scopes = [];
@@ -2982,8 +3065,6 @@
 
     const user = getActiveUserIdentity();
     const userName = user.name || 'Sai Chandra Kiran Uppalapati';
-    const email = user.email || 'saichandrakiranuppalapati45b4@gmail.com';
-    const account = (plug.key === 'gmail' || plug.key === 'google_calendar') ? email : (plug.defaultVal || email);
 
     try {
       const res = await fetch('/api/config/oauth-authorize', {
@@ -2992,6 +3073,7 @@
         body: JSON.stringify({
           pluginKey: plug.key,
           account,
+          password,
           userName,
           permissions,
           scopes
@@ -3009,15 +3091,15 @@
 
         const toast = document.getElementById('pmPluginToast');
         if (toast) {
-          toast.textContent = `✓ ${plug.name} signed in successfully via Single Sign-On!`;
+          toast.textContent = `✓ Signed in successfully! ${plug.name} connected for ${account}.`;
           toast.style.display = 'inline-flex';
           setTimeout(() => { toast.style.display = 'none'; }, 4000);
         }
       } else {
-        alert('OAuth Authorization failed: ' + (data.error || 'Unknown error'));
+        alert('Sign-in failed: ' + (data.error || 'Invalid credentials or connection error'));
         if (btn) btn.disabled = false;
         if (spinner) spinner.style.display = 'none';
-        if (btnTxt) btnTxt.textContent = 'RETRY AUTHORIZATION';
+        if (btnTxt) btnTxt.textContent = 'RETRY SIGN IN';
       }
     } catch (err) {
       console.warn('OAuth authorize fallback:', err);
@@ -3027,7 +3109,8 @@
         authType: 'oauth',
         account,
         userName,
-        tokenId: `oauth_${plug.key}_sso_${Date.now().toString(36)}`,
+        hasCredentials: true,
+        tokenId: `oauth_${plug.key}_cred_${Date.now().toString(36)}`,
         scopes,
         permissions,
         connectedAt: Date.now()
@@ -3042,137 +3125,23 @@
 
       const toast = document.getElementById('pmPluginToast');
       if (toast) {
-        toast.textContent = `✓ ${plug.name} signed in successfully!`;
+        toast.textContent = `✓ Signed in successfully! ${plug.name} connected for ${account}.`;
         toast.style.display = 'inline-flex';
         setTimeout(() => { toast.style.display = 'none'; }, 4000);
       }
     }
   };
 
-  window.confirmDirectOAuth = async function(plugKey) {
-    const plug = PLUGINS.find(p => p.key === plugKey);
-    if (!plug) return;
-
-    const user = getActiveUserIdentity();
-    const userName = user.name || 'Sai Chandra Kiran Uppalapati';
-    const email = user.email || 'saichandrakiranuppalapati45b4@gmail.com';
-    const account = (plugKey === 'gmail' || plugKey === 'google_calendar') ? email : (plug.defaultVal || email);
-
-    const permissions = {};
-    const scopes = [];
-    (plug.scopes || []).forEach(s => {
-      permissions[s.key] = true;
-      scopes.push(s.scope);
-    });
-
-    try {
-      const res = await fetch('/api/config/oauth-authorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pluginKey: plug.key,
-          account,
-          userName,
-          permissions,
-          scopes
-        })
-      });
-      const data = await res.json();
-      if (data.ok && data.plugin) {
-        currentSettings = currentSettings || {};
-        currentSettings.plugins = currentSettings.plugins || {};
-        currentSettings.plugins[plug.key] = data.plugin;
-      } else {
-        throw new Error(data.error || 'Server rejected');
-      }
-    } catch (err) {
-      const fallbackPlugin = {
-        enabled: true,
-        status: 'connected',
-        authType: 'oauth',
-        account,
-        userName,
-        tokenId: `oauth_${plug.key}_sso_${Date.now().toString(36)}`,
-        scopes,
-        permissions,
-        connectedAt: Date.now()
-      };
-      currentSettings = currentSettings || {};
-      currentSettings.plugins = currentSettings.plugins || {};
-      currentSettings.plugins[plug.key] = fallbackPlugin;
-    }
-
-    localStorage.setItem('office_settings', JSON.stringify(currentSettings));
-    renderPluginSettings(currentSettings);
-
-    const toast = document.getElementById('pmPluginToast');
-    if (toast) {
-      toast.textContent = `✓ ${plug.name} signed in successfully as ${userName}!`;
-      toast.style.display = 'inline-flex';
-      setTimeout(() => { toast.style.display = 'none'; }, 4000);
-    }
-  };
-
-  window.signInAllWithGoogle = async function() {
-    const user = getActiveUserIdentity();
-    const userName = user.name || 'Sai Chandra Kiran Uppalapati';
-    const email = user.email || 'saichandrakiranuppalapati45b4@gmail.com';
-
-    currentSettings = currentSettings || {};
-    currentSettings.plugins = currentSettings.plugins || {};
-
-    for (const plug of PLUGINS) {
-      const permissions = {};
-      const scopes = [];
-      (plug.scopes || []).forEach(s => {
-        permissions[s.key] = true;
-        scopes.push(s.scope);
-      });
-      const account = (plug.key === 'gmail' || plug.key === 'google_calendar') ? email : (plug.defaultVal || email);
-      const plugData = {
-        enabled: true,
-        status: 'connected',
-        authType: 'oauth',
-        account,
-        userName,
-        tokenId: `oauth_${plug.key}_sso_${Date.now().toString(36)}`,
-        scopes,
-        permissions,
-        connectedAt: Date.now()
-      };
-      currentSettings.plugins[plug.key] = plugData;
-
-      try {
-        fetch('/api/config/oauth-authorize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pluginKey: plug.key,
-            account,
-            userName,
-            permissions,
-            scopes
-          })
-        }).catch(() => {});
-      } catch (e) {}
-    }
-
-    localStorage.setItem('office_settings', JSON.stringify(currentSettings));
-    renderPluginSettings(currentSettings);
-
-    const toast = document.getElementById('pmPluginToast');
-    if (toast) {
-      toast.textContent = `✓ All 7 apps & connectors signed in with Google SSO (${userName})!`;
-      toast.style.display = 'inline-flex';
-      setTimeout(() => { toast.style.display = 'none'; }, 4500);
-    }
+  window.signInAllWithGoogle = function() {
+    openOAuthModal('google_calendar');
   };
 
   window.handlePluginToggle = function(plugKey, checkbox) {
     if (!checkbox.checked) {
       revokeOAuth(plugKey);
     } else {
-      confirmDirectOAuth(plugKey);
+      checkbox.checked = false;
+      openOAuthModal(plugKey);
     }
   };
 
