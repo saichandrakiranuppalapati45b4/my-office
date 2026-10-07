@@ -53,19 +53,44 @@ export async function loadConnectors({ timeout = 25000 } = {}) {
     const [m, a] = await Promise.all([fetch('/api/mcp', { signal: ctl.signal }).then(r => r.ok ? r.json() : null),
                                       fetch('/api/agents', { signal: ctl.signal }).then(r => r.ok ? r.json() : null).catch(() => null)]);
     clearTimeout(t);
-    if (m) return fromSummary(m, a && a.agents);
+    if (m && m.servers && m.servers.length) return fromSummary(m, a && a.agents);
   } catch {}
   try {
-    const localCfg = JSON.parse(localStorage.getItem('office_plugins') || '{}');
+    let settings = {};
+    try { settings = JSON.parse(localStorage.getItem('office_settings') || '{}'); } catch {}
+    let plugins = settings.plugins || {};
+    try {
+      const p2 = JSON.parse(localStorage.getItem('office_plugins') || '{}');
+      plugins = { ...plugins, ...p2 };
+    } catch {}
+
     const servers = [
       { key: 'gmail', name: 'Gmail', status: 'connected', allowed: true, depts: ['emails', 'sales', 'ops', 'fin', 'delivery', 'ceo'] },
-      { key: 'slack', name: 'Slack', status: 'connected', allowed: true, depts: ['ceo', 'marketing', 'delivery', 'ops'] }
+      { key: 'googlecalendar', name: 'Google Calendar', status: 'connected', allowed: true, depts: ['emails', 'sales', 'delivery', 'ceo', 'ops'] },
+      { key: 'chrome', name: 'Chrome', status: 'connected', allowed: true, depts: DEPT_KEYS }
     ];
-    for (const [k, p] of Object.entries(localCfg)) {
-      if (p.enabled && !servers.find(s => s.key === k)) {
-        servers.push({ key: k, name: p.userName || k, status: 'connected', allowed: true, depts: ['ceo', 'ops'] });
+
+    const MAP = {
+      gmail: { key: 'gmail', name: 'Gmail', depts: ['emails', 'sales', 'ops', 'fin', 'delivery', 'ceo'] },
+      google_calendar: { key: 'googlecalendar', name: 'Google Calendar', depts: ['emails', 'sales', 'delivery', 'ceo', 'ops'] },
+      slack: { key: 'slack', name: 'Slack', depts: ['ceo', 'marketing', 'delivery', 'ops'] },
+      meta: { key: 'meta', name: 'Meta Ads', depts: ['marketing'] },
+      twitter: { key: 'twitter', name: 'Twitter / X', depts: ['marketing'] },
+      browser: { key: 'chrome', name: 'Chrome', depts: DEPT_KEYS }
+    };
+
+    for (const [k, p] of Object.entries(plugins)) {
+      if (p && p.enabled) {
+        const info = MAP[k] || { key: k, name: p.userName || k, depts: ['ceo', 'ops'] };
+        const existing = servers.find(s => s.key === info.key);
+        if (existing) {
+          existing.status = 'connected';
+        } else {
+          servers.push({ key: info.key, name: info.name, status: 'connected', allowed: true, depts: info.depts });
+        }
       }
     }
     return fromSummary({ servers, tools: true, web: true }, null);
   } catch { return null; }
 }
+

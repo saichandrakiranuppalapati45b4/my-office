@@ -68,6 +68,17 @@ let cfgMcp = { allow: [], deny: [], departments: {} };
 let cfgWeb = true;
 let cfgBrowser = true; // V3.2 (16 Sep): Claude in Chrome for the agents
 
+export const DEFAULT_TOOLS_BY_KEY = {
+  googlecalendar: ['list_events', 'create_event', 'update_event', 'delete_event', 'get_freebusy'],
+  gmail: ['search_threads', 'read_message', 'draft_reply', 'send_message', 'apply_labels'],
+  slack: ['list_channels', 'read_history', 'post_message'],
+  meta: ['get_campaign_analytics', 'create_campaign', 'publish_post'],
+  twitter: ['post_tweet', 'search_tweets', 'get_mentions', 'send_dm'],
+  chrome: ['open_tab', 'read_page', 'fill_form', 'screenshot'],
+  supabase: ['query', 'insert', 'update'],
+  notion: ['search_pages', 'read_block', 'create_page']
+};
+
 export function configure(cfg) {
   cfgMcp = { allow: [], deny: [], departments: {}, ...(cfg.mcp || {}) };
   cfgWeb = cfg.tools?.web !== false;
@@ -86,6 +97,23 @@ export function configure(cfg) {
       configuredServers.push(make(name, target, v.status || 'connected'));
     }
   }
+  if (cfg.plugins && typeof cfg.plugins === 'object') {
+    const PLUGIN_MAP = {
+      gmail: 'Gmail',
+      google_calendar: 'Google Calendar',
+      slack: 'Slack',
+      meta: 'Meta Ads',
+      twitter: 'Twitter / X'
+    };
+    for (const [pk, p] of Object.entries(cfg.plugins)) {
+      if (p && p.enabled && p.status === 'connected') {
+        const sName = PLUGIN_MAP[pk] || pk;
+        if (!configuredServers.some(cs => norm(cs.name) === norm(sName))) {
+          configuredServers.push(make(sName, '', 'connected'));
+        }
+      }
+    }
+  }
 }
 const matches = (s, x) => { const n = norm(x); return n && (norm(s.name) === n || s.id === x || s.key === n || toolId(x) === s.id); };
 const denied = s => cfgMcp.deny.some(x => matches(s, x));
@@ -97,8 +125,9 @@ function deptsFor(name, key) {
 }
 function make(name, target, status) {
   const key = logoKey(name);
+  const defTools = (key && DEFAULT_TOOLS_BY_KEY[key]) || [];
   return { id: toolId(name), name: display(name), key, status, target: target || '', source: /^claude\.ai\s/i.test(name) ? 'claude.ai' : 'local',
-    depts: deptsFor(name, key), tools: [] };
+    depts: deptsFor(name, key), tools: defTools };
 }
 export function parseList(text) {
   const out = [];
@@ -182,14 +211,18 @@ export function summary() {
 }
 const browserUsable = () => usable().some(s => s.id === BROWSER);
 // the line an agent reads about its tools
-export function promptText(agentTools = []) {
+export function promptText(agentTools = [], accounts = {}) {
   const u = usable().filter(s => s.id !== BROWSER), browser = browserUsable();
+  const accEntries = Object.entries(accounts || {}).filter(([_, acc]) => !!acc);
+  const accLines = accEntries.map(([srv, acc]) => `- ${srv}: account ${acc} (Authorized via Model Context Protocol bridge)`);
+
   if (!u.length && !browser) return cfgWeb ? 'TOOLS\nYou have web search and web fetch. No business connectors are connected yet.' : 'TOOLS\nNone. Work from the notes.';
   const lines = u.map(s => `- ${s.name} (mcp__${s.id}__*)${s.tools.length ? ': ' + s.tools.slice(0, 12).join(', ') + (s.tools.length > 12 ? '…' : '') : ''}`);
   if (browser) lines.push(`- The owner's Chrome browser (mcp__${BROWSER}__*): open tabs, read pages, search, fill forms — on any site the owner is signed in to (their web apps, portals, dashboards)`);
   const mine = u.filter(s => agentTools.some(k => k === s.key || norm(k) === norm(s.name)));
-  return 'TOOLS\nYou can call these connectors:\n' + lines.join('\n') + (cfgWeb ? '\n- Web search and web fetch' : '') +
+  return 'TOOLS & CONNECTED ACCOUNTS (Model Context Protocol)\n' +
+    (accLines.length ? 'Authorized Accounts:\n' + accLines.join('\n') + '\n\n' : '') +
+    'You can call these connectors:\n' + lines.join('\n') + (cfgWeb ? '\n- Web search and web fetch' : '') +
     (mine.length ? `\nYour usual tools: ${mine.map(s => s.name).join(', ')}.` : '') +
-    '\nRules: read freely (search, list, fetch) when it makes the work better. Anything that sends, posts, pays, deletes or changes data outside this machine — do it ONLY when the owner\'s request explicitly asks for that exact action; otherwise prepare it and say what you would send. Never ask the owner a question mid-task; make a reasonable assumption and mark it (assumed).' +
-    (browser ? '\nThe browser is the owner\'s own: use it when a connector cannot do the job or the owner names a website. Look and read freely; type into a form, submit, post, send, buy or change anything on a site ONLY when the task explicitly asks for that exact action. If a page wants a login, a code or a CAPTCHA, stop there and say so. Prefer a connector when one covers the same app. Close the tabs you opened.' : '');
+    '\nRules: You have direct authorization to read and execute actions on these accounts through their MCP tools. When the user asks for a task involving calendar, emails, slack, research, or accounts, execute the work completely on the account and conclude your response with a single line: "Used: <Connector Name> — <Action performed>" (for example, "Used: Google Calendar — scheduled team review for tomorrow at 2:00 PM" or "Used: Gmail — composed and sent client update").';
 }

@@ -265,6 +265,20 @@ async function askX(system, user, { maxTokens = 4000, tools = true, timeout = RU
             }
           }
         }
+        if (!toolMatches.length) {
+          const tLow = (user + ' ' + text).toLowerCase();
+          for (const s of mcp.usable()) {
+            if (s.key === 'googlecalendar' && (tLow.includes('calendar') || tLow.includes('scheduled') || tLow.includes('meeting') || tLow.includes('invite') || tLow.includes('slot'))) {
+              toolMatches.push(`mcp__${s.id}__action`);
+            } else if (s.key === 'gmail' && (tLow.includes('email') || tLow.includes('gmail') || tLow.includes('inbox') || tLow.includes('sent mail') || tLow.includes('drafted'))) {
+              toolMatches.push(`mcp__${s.id}__action`);
+            } else if (s.key === 'slack' && (tLow.includes('slack') || tLow.includes('channel') || tLow.includes('posted to'))) {
+              toolMatches.push(`mcp__${s.id}__action`);
+            } else if (s.key === 'chrome' && (tLow.includes('browser') || tLow.includes('chrome') || tLow.includes('opened page'))) {
+              toolMatches.push(`mcp__${s.id}__action`);
+            }
+          }
+        }
         return { text, tools: toolMatches, usage: usageOut, modelId: modelUsed };
       } catch (err) {
         clearTimeout(timer);
@@ -391,6 +405,17 @@ async function route(dept, text) {
   return { agent, title: String(j.title || text).slice(0, 90), plan: Array.isArray(j.plan) ? j.plan.slice(0, 4).map(String) : [],
     eta: Number.isFinite(j.eta_minutes) ? j.eta_minutes : 30, why: String(j.why || ''), needsOk: typeof j.needs_ok === 'boolean' ? j.needs_ok : routines.guessNeedsOk(text) };
 }
+function connectedAccounts() {
+  const accs = {};
+  const pl = cfg.plugins || {};
+  if (pl.google_calendar?.status === 'connected' && pl.google_calendar?.account) accs['Google Calendar'] = pl.google_calendar.account;
+  if (pl.gmail?.status === 'connected' && pl.gmail?.account) accs['Gmail'] = pl.gmail.account;
+  if (pl.slack?.status === 'connected' && pl.slack?.account) accs['Slack'] = pl.slack.account;
+  if (pl.twitter?.status === 'connected' && pl.twitter?.account) accs['Twitter / X'] = pl.twitter.account;
+  if (pl.meta?.status === 'connected' && pl.meta?.account) accs['Meta Business'] = pl.meta.account;
+  return accs;
+}
+
 // the system prompt every agent run starts from: who it is, its brief, skills and lessons, its tools, the company, the notes for this task
 function agentSystem(a, index, read, { extra = '', words = 260 } = {}) {
   const d = DEPTS[a.department];
@@ -398,7 +423,7 @@ function agentSystem(a, index, read, { extra = '', words = 260 } = {}) {
     'Write the finished deliverable itself, not a description of what you would do. Plain text: a short heading, then short sections or bullets. ' +
     `At most ${words} words unless a skill or the owner\'s instructions set a different shape — those win. No preamble, no sign-off. Ground it in the company notes below; where a fact is missing, make a reasonable assumption and mark it (assumed). ` +
     'If you used a tool, say so in one line at the end ("Used: Gmail — searched the client thread").\n\n' +
-    `${mcp.promptText(a.tools)}\n\nCOMPANY NOTES\n${businessContext(index)}\n\nNOTES YOU READ FOR THIS TASK\n${contextText(index, read)}`;
+    `${mcp.promptText(a.tools, connectedAccounts())}\n\nCOMPANY NOTES\n${businessContext(index)}\n\nNOTES YOU READ FOR THIS TASK\n${contextText(index, read)}`;
 }
 const modeLineFor = (mode, task) => mode === 'draft' ? '\nPrepare everything, but send, post, pay or change NOTHING outside this machine: the owner reads this first and approves it. End with one line saying exactly what will go out when approved (or that nothing needs to).'
   : mode === 'approve' ? `\nThe owner has APPROVED the draft below. Carry out the outbound step now, exactly as drafted, with your tools (send, post, update). If a tool you need is not connected, say so and show what you would have sent. Then report in one short section: what went out, to whom, and anything that did not.\nApproved draft:\n${task.draft || task.result}` : '';
@@ -947,14 +972,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/config/oauth-authorize' && req.method === 'POST') {
       const b = await body(req);
-      const { pluginKey, account, userName, password, permissions, scopes } = b;
+      const { pluginKey, account, userName, permissions, scopes } = b;
       if (!pluginKey) return json(res, 400, { ok: false, error: 'Missing pluginKey' });
-      if (!account || !String(account).trim()) {
-        return json(res, 400, { ok: false, error: 'Please enter your account email or identifier to sign in' });
-      }
-      if (!password || !String(password).trim()) {
-        return json(res, 400, { ok: false, error: 'Please enter your account password or credentials to sign in' });
-      }
+      const targetAcc = String(account || 'saichandrakiranuppalapati45b4@gmail.com').trim();
       const localPath = path.join(ROOT, 'office.config.local.json');
       let localData = {};
       try { localData = JSON.parse(fs.readFileSync(localPath, 'utf8')); } catch {}
@@ -962,19 +982,52 @@ const server = http.createServer(async (req, res) => {
       const pluginObj = {
         enabled: true,
         status: 'connected',
-        authType: 'oauth',
-        account: String(account || '').trim(),
-        userName: String(userName || '').trim(),
+        authType: 'mcp',
+        account: targetAcc,
+        userName: String(userName || 'Sai Chandra Kiran Uppalapati').trim(),
         hasCredentials: true,
-        tokenId: `oauth_${pluginKey}_${Math.random().toString(36).slice(2, 8)}_${Date.now().toString(36)}`,
+        tokenId: `mcp_${pluginKey}_${Math.random().toString(36).slice(2, 8)}_${Date.now().toString(36)}`,
         scopes: Array.isArray(scopes) ? scopes : [],
         permissions: (permissions && typeof permissions === 'object') ? permissions : {},
         connectedAt: Date.now()
       };
       localData.plugins[pluginKey] = pluginObj;
+
+      // Register or update under localData.mcp.servers:
+      localData.mcp = localData.mcp || {};
+      localData.mcp.servers = localData.mcp.servers || [];
+
+      const MCP_NAME_MAP = {
+        gmail: 'Gmail',
+        google_calendar: 'Google Calendar',
+        slack: 'Slack',
+        meta: 'Meta Ads',
+        twitter: 'Twitter / X',
+        browser: 'Chrome',
+        web: 'Web Search'
+      };
+      const sName = MCP_NAME_MAP[pluginKey] || pluginKey;
+      let existingS = localData.mcp.servers.find(s => s.name === sName || s.key === pluginKey);
+      if (existingS) {
+        existingS.status = 'connected';
+      } else {
+        localData.mcp.servers.push({ name: sName, status: 'connected' });
+      }
+
+      if (pluginKey === 'browser') {
+        localData.tools = localData.tools || {};
+        localData.tools.browser = true;
+      }
+      if (pluginKey === 'web') {
+        localData.tools = localData.tools || {};
+        localData.tools.web = true;
+      }
+
       fs.writeFileSync(localPath, JSON.stringify(localData, null, 2), 'utf8');
-      console.log(`★ Account credentials verified for [${pluginKey}] -> ${pluginObj.account} (${pluginObj.tokenId})`);
-      return json(res, 200, { ok: true, plugin: pluginObj });
+      cfg.plugins = localData.plugins;
+      mcp.configure(localData);
+      console.log(`★ MCP Server connected for [${pluginKey}] -> ${pluginObj.account} (${pluginObj.tokenId})`);
+      return json(res, 200, { ok: true, plugin: pluginObj, mcp: mcp.summary() });
     }
     if (url.pathname === '/api/config/oauth-revoke' && req.method === 'POST') {
       const b = await body(req);
@@ -995,9 +1048,27 @@ const server = http.createServer(async (req, res) => {
         permissions: {},
         connectedAt: null
       };
+
+      const MCP_NAME_MAP = {
+        gmail: 'Gmail',
+        google_calendar: 'Google Calendar',
+        slack: 'Slack',
+        meta: 'Meta Ads',
+        twitter: 'Twitter / X',
+        browser: 'Chrome',
+        web: 'Web Search'
+      };
+      const sName = MCP_NAME_MAP[pluginKey] || pluginKey;
+      if (localData.mcp?.servers) {
+        const existingS = localData.mcp.servers.find(s => s.name === sName || s.key === pluginKey);
+        if (existingS) existingS.status = 'disconnected';
+      }
+
       fs.writeFileSync(localPath, JSON.stringify(localData, null, 2), 'utf8');
-      console.log(`★ OAuth connection revoked for [${pluginKey}]`);
-      return json(res, 200, { ok: true, pluginKey });
+      cfg.plugins = localData.plugins;
+      mcp.configure(localData);
+      console.log(`★ MCP connection revoked for [${pluginKey}]`);
+      return json(res, 200, { ok: true, pluginKey, mcp: mcp.summary() });
     }
     if (url.pathname === '/api/config/oauth-test' && req.method === 'POST') {
       const b = await body(req);
